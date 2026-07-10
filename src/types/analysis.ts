@@ -16,7 +16,8 @@ export type MetricKey =
   | 'headStability'
   | 'asymmetry'
   | 'engagementIndex'
-  | 'stressIndex';
+  | 'stressIndex'
+  | 'expressionCongruence';
 
 export interface EmotionScore {
   name: EmotionName;
@@ -125,6 +126,30 @@ export interface PersonSummary {
   firstSeenAt: number;
 }
 
+export interface ObjectDetection {
+  id: string;
+  label: string;
+  score: number;
+  box: FaceBox;
+}
+
+export interface VoiceFrame {
+  active: boolean;
+  speaking: boolean;
+  volume: number;
+  pitchHz: number;
+  pitchVariability: number;
+  speakingRatePerMin: number;
+  vocalTension: number;
+}
+
+export interface FirewallAlert {
+  key: string;
+  label: string;
+  since: number;
+  severity: 'critical';
+}
+
 export interface AnalysisFrame {
   timestamp: number;
   fps: number;
@@ -138,6 +163,9 @@ export interface AnalysisFrame {
   eye: EyeState;
   headPose: HeadPose;
   hands: HandsFrame;
+  objects: ObjectDetection[];
+  voice: VoiceFrame;
+  firewall: FirewallAlert[];
   dataQuality: QualitySignal;
   lighting: QualitySignal;
   framing: QualitySignal;

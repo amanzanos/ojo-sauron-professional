@@ -1,10 +1,11 @@
 import { FaceLandmarker, FilesetResolver, type NormalizedLandmark } from '@mediapipe/tasks-vision';
 import type {
-  AnalysisEvent, AnalysisFrame, EmotionName, EmotionScore, FaceBox, FaceObservation, HandsFrame,
+  AnalysisEvent, AnalysisFrame, EmotionName, EmotionScore, FaceBox, FaceObservation, FirewallAlert, HandsFrame,
   MetricValue, OverlayAlert, QualitySignal
 } from '../types/analysis';
 import { Ema, clamp, distance2D, matrixToEuler, nowId, pct, RollingValue } from '../utils/math';
 import { LM } from './landmarkMap';
+import { EMPTY_VOICE } from './VoiceAnalysisEngine';
 
 type Landmark = NormalizedLandmark;
 
@@ -34,6 +35,7 @@ interface EngineState {
   events: AnalysisEvent[];
   alerts: OverlayAlert[];
   lastEventAt: Record<string, number>;
+  firewallState: Record<string, number | undefined>;
 }
 
 export class FaceAnalysisEngine {
@@ -65,7 +67,8 @@ export class FaceAnalysisEngine {
     },
     events: [],
     alerts: [],
-    lastEventAt: {}
+    lastEventAt: {},
+    firewallState: {}
   };
 
   async init() {
@@ -143,6 +146,7 @@ export class FaceAnalysisEngine {
     const metrics = this.metrics(landmarks, blend, eye, headPose, emotions, motion);
     const framing = this.framingQuality(box, width, height);
     const dataQuality = this.dataQuality(landmarks.length, framing);
+    const firewall = this.firewallCheck(ts, metrics, emotions);
 
     this.detectEvents(ts, box, dominantEmotion, metrics, eye, headPose, blend, lighting, framing, hands);
 
@@ -159,6 +163,9 @@ export class FaceAnalysisEngine {
       eye,
       headPose,
       hands,
+      objects: [],
+      voice: EMPTY_VOICE,
+      firewall,
       dataQuality,
       lighting,
       framing,
@@ -170,6 +177,7 @@ export class FaceAnalysisEngine {
 
   private emptyFrame(ts: number, hands: HandsFrame, lighting: QualitySignal): AnalysisFrame {
     const emotions = this.defaultEmotions();
+    this.state.firewallState = {};
     return {
       timestamp: ts,
       fps: Math.round(this.state.fps.avg()),
@@ -182,6 +190,9 @@ export class FaceAnalysisEngine {
       eye: { leftEAR: 0, rightEAR: 0, blink: false, blinkRate: this.currentBlinkRate(ts), avgBlinkDurationMs: Math.round(this.state.blinkDurations.avg()), gaze: 'unknown', awaySeconds: 0 },
       headPose: { yaw: 0, pitch: 0, roll: 0, label: 'Sin rostro' },
       hands,
+      objects: [],
+      voice: EMPTY_VOICE,
+      firewall: [],
       dataQuality: { score: 0, label: 'Sin rostro', ok: false },
       lighting,
       framing: { score: 0, label: 'Sin rostro', ok: false },
@@ -367,6 +378,11 @@ export class FaceAnalysisEngine {
     const browAsymmetry = Math.abs(this.blendScore(blend, 'browDownLeft') - this.blendScore(blend, 'browDownRight')) * 100;
     const asymmetry = clamp(smileAsymmetry * 0.6 + browAsymmetry * 0.4);
 
+    // Duchenne marker: a genuine smile engages the cheek/eye muscles, not just the mouth.
+    // Smiling wide with little cheek-squint reads as a social/forced smile.
+    const cheekRaise = clamp(Math.max(this.blendScore(blend, 'cheekSquintLeft'), this.blendScore(blend, 'cheekSquintRight')) * 130);
+    const expressionCongruence = clamp(100 - Math.max(0, smile - cheekRaise * 1.4) * 1.1);
+
     const engagementIndex = clamp(attention * 0.4 + eyeContact * 0.3 + expressiveness * 0.3);
     const stressIndex = clamp(tension * 0.4 + nervousness * 0.35 + fatigue * 0.25);
 
@@ -379,6 +395,10 @@ export class FaceAnalysisEngine {
 
     const metric = (key: MetricValue['key'], label: string, value: number, unit?: string): MetricValue => ({
       key, label, value: pct(value), unit, status: value > 80 ? 'critical' : value > 60 ? 'high' : value > 40 ? 'medium' : value > 20 ? 'normal' : 'low'
+    });
+    // Higher is better here (more genuine/congruent), so the usual "high value = alarming" status scale is inverted.
+    const inverseMetric = (key: MetricValue['key'], label: string, value: number, unit?: string): MetricValue => ({
+      key, label, value: pct(value), unit, status: value > 80 ? 'normal' : value > 60 ? 'medium' : value > 40 ? 'high' : 'critical'
     });
 
     return [
@@ -397,7 +417,8 @@ export class FaceAnalysisEngine {
       metric('mouthTension', 'Boca tensa', mouthTension, '%'),
       metric('eyeOpenness', 'Apertura ocular', eyeOpen, '%'),
       metric('headStability', 'Estabilidad cabeza', headStability, '%'),
-      metric('asymmetry', 'Asimetría gestual', asymmetry, '%')
+      metric('asymmetry', 'Asimetría gestual', asymmetry, '%'),
+      inverseMetric('expressionCongruence', 'Congruencia expresión-emoción', expressionCongruence, '%')
     ];
   }
 
@@ -455,6 +476,43 @@ export class FaceAnalysisEngine {
     return { score: pct(score), label, ok: avg >= 55 && avg <= 235 };
   }
 
+  /**
+   * "Firewall emocional": unlike the transient spike-based alerts in detectEvents(), this
+   * watches for critical emotion/stress levels held continuously for several seconds — a
+   * protective signal for sustained extreme reactions, not just a momentary blip.
+   */
+  private firewallCheck(ts: number, metrics: MetricValue[], emotions: EmotionScore[]): FirewallAlert[] {
+    const value = (key: string) => metrics.find((m) => m.key === key)?.value ?? 0;
+    const emo = (name: EmotionName) => emotions.find((e) => e.name === name)?.score ?? 0;
+
+    const watch: Array<[string, boolean, string, number]> = [
+      ['angry_sustained', emo('angry') > 70, 'ENFADO SOSTENIDO', 4000],
+      ['fearful_sustained', emo('fearful') > 70, 'MIEDO SOSTENIDO', 4000],
+      ['stress_critical', value('stressIndex') > 80, 'ESTRÉS CRÍTICO SOSTENIDO', 5000],
+      ['nervous_critical', value('nervousness') > 85, 'NERVIOSISMO CRÍTICO SOSTENIDO', 5000]
+    ];
+
+    const active: FirewallAlert[] = [];
+    watch.forEach(([key, condition, label, minDuration]) => {
+      if (!condition) {
+        this.state.firewallState[key] = undefined;
+        return;
+      }
+      this.state.firewallState[key] ??= ts;
+      const since = this.state.firewallState[key]!;
+      if (ts - since < minDuration) return;
+
+      active.push({ key, label, since, severity: 'critical' });
+      const eventKey = `firewall_${key}`;
+      if ((this.state.lastEventAt[eventKey] ?? 0) + 30000 > ts) return;
+      this.state.lastEventAt[eventKey] = ts;
+      const ev = { id: nowId(), time: Date.now(), severity: 'critical' as const, title: `FIREWALL EMOCIONAL: ${label}`, detail: 'Nivel crítico mantenido de forma sostenida durante varios segundos' };
+      this.state.events.unshift(ev);
+      this.state.events = this.state.events.slice(0, 50);
+    });
+    return active;
+  }
+
   private detectEvents(
     ts: number,
     box: FaceBox,
@@ -488,6 +546,7 @@ export class FaceAnalysisEngine {
       ['head_turn', Math.abs(head.yaw) > 24, 'info', 'CABEZA GIRADA', head.label],
       ['yawn', yawnDuration > 1200, 'warning', 'BOSTEZO DETECTADO', 'Apertura mandibular sostenida', 8000],
       ['asymmetry_high', value('asymmetry') > 55, 'info', 'GESTO ASIMÉTRICO', 'Expresión notablemente distinta entre ambos lados', 9000],
+      ['fake_smile', value('smile') > 50 && value('expressionCongruence') < 55, 'info', 'SONRISA POCO GENUINA', 'Sonrisa sin compromiso ocular — posible sonrisa social o forzada', 9000],
       ['self_touch', handNearFace, 'info', 'AUTOCONTACTO MANO-ROSTRO', 'Posible gesto de auto-calma o duda', 9000],
       ['low_light', !lighting.ok && lighting.label === 'Poca luz', 'warning', 'POCA ILUMINACIÓN', 'Mejora la luz ambiente para una detección más precisa', 20000],
       ['bad_framing', !framing.ok, 'info', 'ENCUADRE MEJORABLE', framing.label, 20000]

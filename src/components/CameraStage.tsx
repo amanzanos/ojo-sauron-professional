@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { AlertTriangle, Radio, Sun, Timer, Users } from 'lucide-react';
+import { AlertTriangle, Mic, MicOff, Radio, ShieldAlert, Sun, Timer, Users } from 'lucide-react';
 import type { AnalysisFrame } from '../types/analysis';
 import { GESTURE_ICON } from '../engine/HandGestureEngine';
 
@@ -11,12 +11,16 @@ interface Props {
   error?: string;
   onStart: () => void;
   elapsedLabel: string;
+  voiceActive: boolean;
+  voiceError?: string;
+  onToggleVoice: () => void;
 }
 
-export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart, elapsedLabel }: Props) {
+export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart, elapsedLabel, voiceActive, voiceError, onToggleVoice }: Props) {
   const vw = videoRef.current?.videoWidth || 1;
   const vh = videoRef.current?.videoHeight || 1;
   const gestures = (frame?.hands.gestures ?? []).filter((g) => g.name !== 'hand_near_face');
+  const firewall = frame?.firewall ?? [];
 
   return (
     <section className="stage">
@@ -24,12 +28,24 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
       <canvas ref={canvasRef} className="overlay" />
       <div className="scan-line" aria-hidden="true" />
 
+      {firewall.length > 0 && (
+        <div className="firewall-banner">
+          <ShieldAlert size={15} />
+          FIREWALL EMOCIONAL — {firewall.map((f) => f.label).join(' · ')}
+        </div>
+      )}
+
       <div className="topbar">
         <div>
           <div className="brand">OJO DE SAURON</div>
           <div className="subtitle">Centro de análisis conductual en tiempo real</div>
         </div>
         <div className="topbar-right">
+          {ready && (
+            <button className={`voice-toggle ${voiceActive ? 'active' : ''}`} onClick={onToggleVoice} title={voiceActive ? 'Desactivar análisis de voz' : 'Activar análisis de voz'}>
+              {voiceActive ? <Mic size={13} /> : <MicOff size={13} />} VOZ
+            </button>
+          )}
           {ready && (
             <div className="rec-indicator">
               <span className="rec-dot" /> REC <span className="mono">{elapsedLabel}</span>
@@ -61,6 +77,11 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
               <AlertTriangle size={12} /> {frame.framing.label}
             </span>
           )}
+          {voiceError && (
+            <span className="quality-badge warn">
+              <MicOff size={12} /> {voiceError}
+            </span>
+          )}
         </div>
       )}
 
@@ -90,6 +111,16 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
             </div>
           );
         })}
+        {(frame?.objects ?? []).map((o) => {
+          const cx = o.box.x + o.box.width / 2;
+          const leftPct = 100 - (cx / vw) * 100;
+          const topPct = (o.box.y / vh) * 100;
+          return (
+            <div key={o.id} className="object-badge" style={{ left: `${leftPct}%`, top: `${topPct}%` }}>
+              {o.label}
+            </div>
+          );
+        })}
       </div>
 
       <div className="alert-stack">
@@ -110,6 +141,7 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
         <span>Landmarks {frame?.raw.landmarksCount ?? 0}</span>
         <span>{frame?.headPose.label ?? 'Sin datos'}</span>
         <span>Manos {frame?.hands.handsDetected ?? 0}</span>
+        {voiceActive && frame && <span>Voz {frame.voice.speaking ? 'hablando' : 'silencio'}</span>}
       </div>
     </section>
   );

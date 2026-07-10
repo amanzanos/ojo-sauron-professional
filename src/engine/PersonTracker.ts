@@ -1,7 +1,7 @@
 import type { EmotionName, FaceBox, FaceObservation } from '../types/analysis';
 import { distance2D, nowId } from '../utils/math';
 
-const LOST_TIMEOUT_MS = 1500;
+const LOST_TIMEOUT_MS = 4000;
 const ANALYSIS_WINDOW_MS = 2500;
 const MIN_SAMPLES = 15;
 
@@ -81,6 +81,16 @@ export class PersonTracker {
   markProfiled(id: string) {
     const p = this.people.find((x) => x.id === id);
     if (p) p.profiled = true;
+  }
+
+  /**
+   * Collapses a freshly-minted ID back onto a previously known one once face-descriptor
+   * matching (done outside the tracker, which has no pixel access) confirms it's the same
+   * person reappearing — e.g. after turning away or leaving the frame beyond LOST_TIMEOUT_MS.
+   */
+  reassignId(tempId: string, canonicalId: string) {
+    const p = this.people.find((x) => x.id === tempId);
+    if (p) { p.id = canonicalId; p.profiled = true; }
   }
 
   moodSummary(person: TrackedPerson): { mood: EmotionName; score: number } {

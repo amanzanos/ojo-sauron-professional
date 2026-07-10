@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { Activity, Eye, Gauge as GaugeIcon, Hand, History, ScanFace, Users } from 'lucide-react';
+import { Activity, Box, Eye, Gauge as GaugeIcon, Hand, History, Mic, MicOff, ScanFace, Users } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AnalysisFrame, PersonSummary } from '../types/analysis';
 import { MetricBar } from './MetricBar';
@@ -11,9 +11,11 @@ interface Props {
   history: Array<Record<string, number | string>>;
   gestureCounts: Record<string, number>;
   persons: PersonSummary[];
+  voiceActive: boolean;
+  onToggleVoice: () => void;
 }
 
-const TABS = ['Resumen', 'Métricas', 'Emociones', 'Gestos', 'Personas', 'Eventos'] as const;
+const TABS = ['Resumen', 'Métricas', 'Emociones', 'Interacción', 'Voz', 'Personas', 'Eventos'] as const;
 type Tab = (typeof TABS)[number];
 
 function timeAgo(ts: number) {
@@ -22,7 +24,7 @@ function timeAgo(ts: number) {
   return `hace ${Math.floor(s / 60)}m`;
 }
 
-export function SidePanel({ frame, history, gestureCounts, persons }: Props) {
+export function SidePanel({ frame, history, gestureCounts, persons, voiceActive, onToggleVoice }: Props) {
   const [tab, setTab] = useState<Tab>('Resumen');
   const metric = (key: string) => frame?.metrics.find((m) => m.key === key);
   const emotions = frame?.emotions ?? [];
@@ -91,7 +93,7 @@ export function SidePanel({ frame, history, gestureCounts, persons }: Props) {
         </div>
       )}
 
-      {tab === 'Gestos' && (
+      {tab === 'Interacción' && (
         <>
           <div className="panel-section">
             <div className="section-title"><Hand size={16} /> Gestos activos</div>
@@ -105,7 +107,18 @@ export function SidePanel({ frame, history, gestureCounts, persons }: Props) {
             ) : <div className="empty-hint">Sin gestos detectados</div>}
           </div>
           <div className="panel-section">
-            <div className="section-title">Contadores de sesión</div>
+            <div className="section-title"><Box size={16} /> Objetos en escena</div>
+            {frame?.objects.length ? (
+              frame.objects.map((o) => (
+                <div className="emotion-row" key={o.id}>
+                  <span>{o.label}</span>
+                  <b>{Math.round(o.score * 100)}%</b>
+                </div>
+              ))
+            ) : <div className="empty-hint">Sin objetos detectados</div>}
+          </div>
+          <div className="panel-section">
+            <div className="section-title">Contadores de gestos (sesión)</div>
             {Object.keys(gestureCounts).length ? (
               Object.entries(gestureCounts).map(([name, count]) => (
                 <div className="emotion-row" key={name}>
@@ -116,6 +129,27 @@ export function SidePanel({ frame, history, gestureCounts, persons }: Props) {
             ) : <div className="empty-hint">Todavía sin registros</div>}
           </div>
         </>
+      )}
+
+      {tab === 'Voz' && (
+        <div className="panel-section">
+          <div className="section-title">{voiceActive ? <Mic size={16} /> : <MicOff size={16} />} Análisis de voz</div>
+          {voiceActive && frame ? (
+            <>
+              <div className="emotion-row"><span>Estado</span><b>{frame.voice.speaking ? 'Hablando' : 'Silencio'}</b></div>
+              <MiniBar label="Volumen" value={frame.voice.volume} status={frame.voice.volume > 70 ? 'high' : 'normal'} />
+              <MiniBar label="Variabilidad tonal" value={frame.voice.pitchVariability} status="normal" />
+              <MiniBar label="Tensión vocal estimada" value={frame.voice.vocalTension} status={frame.voice.vocalTension > 70 ? 'critical' : frame.voice.vocalTension > 45 ? 'medium' : 'normal'} />
+              <div className="emotion-row"><span>Tono estimado</span><b>{frame.voice.pitchHz > 0 ? `${frame.voice.pitchHz} Hz` : '—'}</b></div>
+              <div className="emotion-row"><span>Ritmo de habla</span><b>{frame.voice.speakingRatePerMin}/min</b></div>
+            </>
+          ) : (
+            <div className="empty-hint">
+              El análisis de voz está desactivado (requiere permiso de micrófono aparte del de cámara).
+              <button className="voice-enable-btn" onClick={onToggleVoice}>Activar análisis de voz</button>
+            </div>
+          )}
+        </div>
       )}
 
       {tab === 'Personas' && (
@@ -160,4 +194,16 @@ export function SidePanel({ frame, history, gestureCounts, persons }: Props) {
 
 function Kpi({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return <div className="kpi">{icon}<span>{label}</span><strong>{value}</strong></div>;
+}
+
+function MiniBar({ label, value, status }: { label: string; value: number; status: 'low' | 'normal' | 'medium' | 'high' | 'critical' }) {
+  return (
+    <div className="metric-row">
+      <div className="metric-head">
+        <span>{label}</span>
+        <strong className="mono">{value}%</strong>
+      </div>
+      <div className="bar"><div className={`bar-fill ${status}`} style={{ width: `${value}%` }} /></div>
+    </div>
+  );
 }

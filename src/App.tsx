@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CameraStage } from './components/CameraStage';
 import { SidePanel } from './components/SidePanel';
-import { AgeGenderEngine } from './engine/AgeGenderEngine';
 import { EMOTION_LABELS, FaceAnalysisEngine } from './engine/FaceAnalysisEngine';
+import { FaceIdentityEngine } from './engine/FaceIdentityEngine';
 import { HandGestureEngine } from './engine/HandGestureEngine';
+import { ObjectDetectionEngine } from './engine/ObjectDetectionEngine';
 import { PersonTracker } from './engine/PersonTracker';
+import { EMPTY_VOICE, VoiceAnalysisEngine } from './engine/VoiceAnalysisEngine';
 import type { AnalysisEvent, AnalysisFrame, FaceBox, PersonSummary } from './types/analysis';
 import { clamp, nowId } from './utils/math';
 import './styles/app.css';
@@ -47,10 +49,14 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const faceEngine = useMemo(() => new FaceAnalysisEngine(), []);
   const handEngine = useMemo(() => new HandGestureEngine(), []);
+  const objectEngine = useMemo(() => new ObjectDetectionEngine(), []);
   const personTracker = useMemo(() => new PersonTracker(), []);
-  const ageGenderEngine = useMemo(() => new AgeGenderEngine(), []);
+  const identityEngine = useMemo(() => new FaceIdentityEngine(), []);
+  const voiceEngine = useMemo(() => new VoiceAnalysisEngine(), []);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string>();
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceError, setVoiceError] = useState<string>();
   const [frame, setFrame] = useState<AnalysisFrame>();
   const [elapsed, setElapsed] = useState(0);
   const [gestureCounts, setGestureCounts] = useState<Record<string, number>>({});
@@ -60,6 +66,9 @@ export default function App() {
   const lastFaceBox = useRef<FaceBox | undefined>();
   const sessionStart = useRef(0);
   const extraEvents = useRef<AnalysisEvent[]>([]);
+  const descriptorArchive = useRef<Array<{ id: string; descriptor: Float32Array }>>([]);
+  const crossIncongruenceStart = useRef<number>();
+  const lastCrossEventAt = useRef(0);
 
   const drawOverlay = useCallback((data: AnalysisFrame) => {
     const canvas = canvasRef.current;
@@ -113,20 +122,40 @@ export default function App() {
         ctx.stroke();
       }
     });
+
+    ctx.strokeStyle = 'rgba(96,165,250,0.75)';
+    ctx.lineWidth = 1.4;
+    data.objects.forEach((obj) => {
+      const w = obj.box.width * sx;
+      const h = obj.box.height * sy;
+      const x = canvas.width - obj.box.x * sx - w;
+      const y = obj.box.y * sy;
+      ctx.strokeRect(x, y, w, h);
+    });
   }, []);
 
+  /** Before minting a new person card, check whether this face matches someone already profiled this session (by appearance, not position) — fixes the same person getting split into duplicate identities after a brief look-away or occlusion. */
   const profilePerson = useCallback((personId: string, box: FaceBox, mood: string, moodScore: number, seenAgoMs: number) => {
     const video = videoRef.current;
     if (!video) return;
     const canvas = capturePhotoCanvas(video, box);
     const photo = canvas.toDataURL('image/jpeg', 0.85);
-    ageGenderEngine.estimate(canvas).then((res) => {
+
+    Promise.all([identityEngine.estimateAgeGender(canvas), identityEngine.computeDescriptor(canvas)]).then(([ageGender, descriptor]) => {
+      if (descriptor) {
+        const match = identityEngine.findMatch(descriptor, descriptorArchive.current);
+        if (match) {
+          personTracker.reassignId(personId, match.id);
+          return; // same person as before — no duplicate card
+        }
+        descriptorArchive.current = [...descriptorArchive.current, { id: personId, descriptor }].slice(-40);
+      }
       const summary: PersonSummary = {
         id: personId,
         photo,
-        sex: res?.sex ?? 'masculino',
-        sexConfidence: res?.sexConfidence ?? 0,
-        age: res?.age ?? 0,
+        sex: ageGender?.sex ?? 'masculino',
+        sexConfidence: ageGender?.sexConfidence ?? 0,
+        age: ageGender?.age ?? 0,
         mood,
         moodScore,
         firstSeenAt: Date.now() - seenAgoMs
@@ -134,8 +163,8 @@ export default function App() {
       setPersons((prev) => [summary, ...prev].slice(0, 24));
       const ev: AnalysisEvent = { id: nowId(), time: Date.now(), severity: 'info', title: 'NUEVA PERSONA IDENTIFICADA', detail: `${summary.sex}, ~${summary.age} años, ánimo ${summary.mood.toLowerCase()}` };
       extraEvents.current = [ev, ...extraEvents.current].slice(0, 50);
-    }).catch((err) => console.error('No se pudo estimar edad/sexo', err));
-  }, [ageGenderEngine]);
+    }).catch((err) => console.error('No se pudo estimar identidad/edad/sexo', err));
+  }, [identityEngine, personTracker]);
 
   const loop = useCallback(() => {
     const video = videoRef.current;
@@ -146,6 +175,9 @@ export default function App() {
         const data = faceEngine.analyze(video, video.videoWidth, video.videoHeight, handsFrame);
         lastFaceBox.current = data.faceBox;
 
+        const objects = objectEngine.detect(video, ts);
+        const voice = voiceActive ? voiceEngine.sample(ts) : EMPTY_VOICE;
+
         const { ready: readyPersons } = personTracker.update(data.allFaces, ts);
         readyPersons.forEach((p) => {
           personTracker.markProfiled(p.id);
@@ -153,7 +185,29 @@ export default function App() {
           profilePerson(p.id, p.bestBox, EMOTION_LABELS[mood], score, ts - p.firstSeenTs);
         });
 
-        const merged: AnalysisFrame = { ...data, events: mergeEvents(mergeEvents(data.events, handEngine.getEvents()), extraEvents.current) };
+        // Cross-modal check: a calm/positive face with sustained high vocal tension (or vice versa)
+        // reads as an incongruence between what's shown and what's said.
+        if (voice.active && voice.speaking) {
+          const calmFace = (data.dominantEmotion.name === 'happy' || data.dominantEmotion.name === 'neutral') && data.dominantEmotion.score > 40;
+          const tenseVoice = voice.vocalTension > 65;
+          if (calmFace && tenseVoice) {
+            crossIncongruenceStart.current ??= ts;
+            if (ts - crossIncongruenceStart.current > 4000 && ts - lastCrossEventAt.current > 30000) {
+              lastCrossEventAt.current = ts;
+              const ev: AnalysisEvent = { id: nowId(), time: Date.now(), severity: 'warning', title: 'INCONGRUENCIA EXPRESIÓN-VOZ', detail: 'Expresión facial calmada pero tono de voz tenso de forma sostenida' };
+              extraEvents.current = [ev, ...extraEvents.current].slice(0, 50);
+            }
+          } else {
+            crossIncongruenceStart.current = undefined;
+          }
+        }
+
+        const merged: AnalysisFrame = {
+          ...data,
+          objects,
+          voice,
+          events: mergeEvents(mergeEvents(mergeEvents(data.events, handEngine.getEvents()), objectEngine.getEvents()), extraEvents.current)
+        };
         setFrame(merged);
         setElapsed((ts - sessionStart.current) / 1000);
         setGestureCounts({ ...handEngine.getCounts() });
@@ -172,12 +226,12 @@ export default function App() {
       }
     }
     raf.current = requestAnimationFrame(loop);
-  }, [drawOverlay, faceEngine, handEngine, personTracker, profilePerson]);
+  }, [drawOverlay, faceEngine, handEngine, objectEngine, personTracker, profilePerson, voiceActive, voiceEngine]);
 
   const start = useCallback(async () => {
     setError(undefined);
     try {
-      await Promise.all([faceEngine.init(), handEngine.init(), ageGenderEngine.init()]);
+      await Promise.all([faceEngine.init(), handEngine.init(), objectEngine.init(), identityEngine.init()]);
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
       const video = videoRef.current;
       if (!video) return;
@@ -189,13 +243,29 @@ export default function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo iniciar la cámara');
     }
-  }, [ageGenderEngine, faceEngine, handEngine, loop]);
+  }, [faceEngine, handEngine, objectEngine, identityEngine, loop]);
+
+  const toggleVoice = useCallback(async () => {
+    setVoiceError(undefined);
+    if (voiceActive) {
+      voiceEngine.stop();
+      setVoiceActive(false);
+      return;
+    }
+    try {
+      await voiceEngine.start();
+      setVoiceActive(true);
+    } catch (e) {
+      setVoiceError(e instanceof Error ? e.message : 'No se pudo activar el micrófono');
+    }
+  }, [voiceActive, voiceEngine]);
 
   useEffect(() => () => {
     if (raf.current) cancelAnimationFrame(raf.current);
     const stream = videoRef.current?.srcObject as MediaStream | undefined;
     stream?.getTracks().forEach((t) => t.stop());
-  }, []);
+    voiceEngine.stop();
+  }, [voiceEngine]);
 
   return (
     <main className="app-shell">
@@ -207,8 +277,11 @@ export default function App() {
         error={error}
         onStart={start}
         elapsedLabel={formatElapsed(elapsed)}
+        voiceActive={voiceActive}
+        voiceError={voiceError}
+        onToggleVoice={toggleVoice}
       />
-      <SidePanel frame={frame} history={history} gestureCounts={gestureCounts} persons={persons} />
+      <SidePanel frame={frame} history={history} gestureCounts={gestureCounts} persons={persons} voiceActive={voiceActive} onToggleVoice={toggleVoice} />
     </main>
   );
 }
