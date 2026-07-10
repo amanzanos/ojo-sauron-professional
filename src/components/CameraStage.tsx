@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { AlertTriangle, Mic, MicOff, Radio, ShieldAlert, Sun, Timer, Users } from 'lucide-react';
+import { AlertTriangle, Heart, Mic, MicOff, Radio, ShieldAlert, Sun, Timer, Users } from 'lucide-react';
 import type { AnalysisFrame } from '../types/analysis';
 import { GESTURE_ICON } from '../engine/HandGestureEngine';
 
@@ -26,6 +26,13 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
     <section className="stage">
       <video ref={videoRef} className="video" autoPlay muted playsInline />
       <canvas ref={canvasRef} className="overlay" />
+      {frame && frame.sceneMotion.heatmap.length > 0 && (
+        <div className="scene-heatmap-overlay" style={{ gridTemplateColumns: `repeat(${frame.sceneMotion.gridW}, 1fr)` }} aria-hidden="true">
+          {frame.sceneMotion.heatmap.map((v, i) => (
+            <div key={i} className="heatmap-cell" style={{ opacity: Math.min(0.7, v / 4) }} />
+          ))}
+        </div>
+      )}
       <div className="scan-line" aria-hidden="true" />
 
       {firewall.length > 0 && (
@@ -42,8 +49,8 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
         </div>
         <div className="topbar-right">
           {ready && (
-            <button className={`voice-toggle ${voiceActive ? 'active' : ''}`} onClick={onToggleVoice} title={voiceActive ? 'Desactivar análisis de voz' : 'Activar análisis de voz'}>
-              {voiceActive ? <Mic size={13} /> : <MicOff size={13} />} VOZ
+            <button className={`voice-toggle ${voiceActive ? 'active' : ''}`} onClick={onToggleVoice} title={voiceActive ? 'Desactivar análisis de audio' : 'Activar análisis de audio (voz + sonido ambiente)'}>
+              {voiceActive ? <Mic size={13} /> : <MicOff size={13} />} AUDIO
             </button>
           )}
           {ready && (
@@ -72,14 +79,19 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
               <Users size={12} /> {frame.peopleDetected} personas en cámara
             </span>
           )}
+          {frame.heartRate.active && (
+            <span className="quality-badge ok">
+              <Heart size={12} /> {frame.heartRate.bpm} bpm
+            </span>
+          )}
           {!frame.framing.ok && (
             <span className="quality-badge warn">
               <AlertTriangle size={12} /> {frame.framing.label}
             </span>
           )}
           {voiceError && (
-            <span className="quality-badge warn">
-              <MicOff size={12} /> {voiceError}
+            <span className="quality-badge warn" title={voiceError}>
+              <MicOff size={12} /> Micrófono bloqueado — ver pestaña Audio
             </span>
           )}
         </div>
@@ -116,8 +128,8 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
           const leftPct = 100 - (cx / vw) * 100;
           const topPct = (o.box.y / vh) * 100;
           return (
-            <div key={o.id} className="object-badge" style={{ left: `${leftPct}%`, top: `${topPct}%` }}>
-              {o.label}
+            <div key={o.id} className={`object-badge ${o.held ? 'held' : ''}`} style={{ left: `${leftPct}%`, top: `${topPct}%` }}>
+              {o.held && '✋ '}{o.label}
             </div>
           );
         })}
@@ -142,6 +154,7 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
         <span>{frame?.headPose.label ?? 'Sin datos'}</span>
         <span>Manos {frame?.hands.handsDetected ?? 0}</span>
         {voiceActive && frame && <span>Voz {frame.voice.speaking ? 'hablando' : 'silencio'}</span>}
+        {voiceActive && frame?.sound.active && <span>Sonido: {frame.sound.topLabel}</span>}
       </div>
     </section>
   );

@@ -5,7 +5,7 @@ import { HAND_LM } from './landmarkMap';
 
 type Landmark = NormalizedLandmark;
 
-const EMPTY_FRAME: HandsFrame = { handsDetected: 0, gestures: [] };
+const EMPTY_FRAME: HandsFrame = { handsDetected: 0, gestures: [], handPositions: [] };
 
 const BUILTIN_LABELS: Record<string, { name: GestureName; label: string }> = {
   Thumb_Up: { name: 'thumb_up', label: 'Pulgar arriba' },
@@ -60,12 +60,16 @@ export class HandGestureEngine {
     const handedness = result.handednesses ?? [];
     const gestureCats = result.gestures ?? [];
     const gestures: GestureResult[] = [];
+    const handPositions: Array<{ x: number; y: number }> = [];
 
     handsLm.forEach((lm, i) => {
       const hand: 'left' | 'right' = handedness[i]?.[0]?.categoryName === 'Left' ? 'left' : 'right';
       const tip = lm[HAND_LM.indexTip];
       const x = tip.x * w, y = tip.y * h;
       const wrist = HAND_LM.wrist;
+
+      const centroid = lm.reduce((acc, p) => ({ x: acc.x + p.x / lm.length, y: acc.y + p.y / lm.length }), { x: 0, y: 0 });
+      handPositions.push({ x: centroid.x * w, y: centroid.y * h });
 
       const built = gestureCats[i]?.[0];
       if (built && built.categoryName !== 'None' && built.score > 0.6 && BUILTIN_LABELS[built.categoryName]) {
@@ -83,8 +87,7 @@ export class HandGestureEngine {
       }
 
       if (faceBox) {
-        const centroid = lm.reduce((acc, p) => ({ x: acc.x + p.x / lm.length, y: acc.y + p.y / lm.length }), { x: 0, y: 0 });
-        const cx = centroid.x * w, cy = centroid.y * h;
+        const { x: cx, y: cy } = handPositions[i];
         const faceCx = faceBox.x + faceBox.width / 2, faceCy = faceBox.y + faceBox.height / 2;
         const threshold = Math.max(faceBox.width, faceBox.height) * 0.85;
         if (distance2D({ x: cx, y: cy }, { x: faceCx, y: faceCy }) < threshold) {
@@ -108,7 +111,7 @@ export class HandGestureEngine {
       }
     }
 
-    this.lastResult = { handsDetected: handsLm.length, gestures };
+    this.lastResult = { handsDetected: handsLm.length, gestures, handPositions };
     this.trackEvents(gestures, ts);
     return this.lastResult;
   }
@@ -117,7 +120,7 @@ export class HandGestureEngine {
     const currentKeys = new Set(gestures.map((g) => `${g.name}-${g.hand}`));
     currentKeys.forEach((key) => {
       if (this.activeKeys.has(key)) return;
-      const cooldownOk = (this.lastEventAt[key] ?? 0) + 2500 < ts;
+      const cooldownOk = ts - (this.lastEventAt[key] ?? -Infinity) >= 2500;
       if (!cooldownOk) return;
       this.lastEventAt[key] = ts;
       const g = gestures.find((x) => `${x.name}-${x.hand}` === key)!;

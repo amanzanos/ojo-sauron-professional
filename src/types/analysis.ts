@@ -106,6 +106,7 @@ export interface GestureResult {
 export interface HandsFrame {
   handsDetected: number;
   gestures: GestureResult[];
+  handPositions: Array<{ x: number; y: number }>;
 }
 
 /** Lightweight per-face data for every face seen this frame (tracking/overlay), not just the primary one. */
@@ -131,6 +132,40 @@ export interface ObjectDetection {
   label: string;
   score: number;
   box: FaceBox;
+  held: boolean;
+  screenState?: 'encendida' | 'apagada';
+}
+
+export interface ObjectInventoryEntry {
+  label: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  totalMs: number;
+  timesSeen: number;
+}
+
+export interface SoundCategory {
+  label: string;
+  score: number;
+}
+
+export interface SoundFrame {
+  active: boolean;
+  topLabel: string;
+  topScore: number;
+  categories: SoundCategory[];
+}
+
+export interface SoundLogEntry {
+  label: string;
+  score: number;
+  time: number;
+}
+
+export interface SoundCategoryStat {
+  label: string;
+  totalMs: number;
+  count: number;
 }
 
 export interface VoiceFrame {
@@ -141,6 +176,26 @@ export interface VoiceFrame {
   pitchVariability: number;
   speakingRatePerMin: number;
   vocalTension: number;
+  jitter: number;
+  shimmer: number;
+  hesitationsPerMin: number;
+  totalHesitations: number;
+  pitchBaselineDeviation: number;
+  ambientNoise: number;
+  fingerprint: number[];
+  utterancePitchHz: number;
+  justStoppedSpeaking: boolean;
+  activeSpeakerLabel: string;
+}
+
+export interface VoiceProfile {
+  id: string;
+  label: string;
+  avgPitchHz: number;
+  firstHeardAt: number;
+  lastHeardAt: number;
+  totalMs: number;
+  utterances: number;
 }
 
 export interface FirewallAlert {
@@ -148,6 +203,66 @@ export interface FirewallAlert {
   label: string;
   since: number;
   severity: 'critical';
+}
+
+export interface HeartRateFrame {
+  active: boolean;
+  bpm: number;
+  confidence: number;
+}
+
+export interface SessionReport {
+  durationMs: number;
+  avgAttention: number;
+  avgStress: number;
+  avgEngagement: number;
+  emotionTimeMs: Record<EmotionName, number>;
+  totalSpeakingMs: number;
+  hesitations: number;
+  alertCounts: Record<AnalysisEvent['severity'], number>;
+  heartRateAvg?: number;
+  heartRateRange?: [number, number];
+}
+
+export interface SceneMotionFrame {
+  overallMotion: number;
+  heatmap: number[];
+  gridW: number;
+  gridH: number;
+}
+
+export interface EnvironmentReport {
+  trafficIndex: number;
+  ambientNoise: number;
+  avgOccupancy: number;
+  peakOccupancy: number;
+  emptyTimeMs: number;
+  overallMotion: number;
+  workSessions: number;
+  breaksCount: number;
+  avgWorkSessionMs: number;
+  avgBreakMs: number;
+  currentState: 'trabajando' | 'descanso' | 'sin_datos';
+  roomType: string;
+  clutterScore: number;
+}
+
+export interface AmbientFrame {
+  lux: number;
+  colorTemp: number;
+  colorTempLabel: 'cálida' | 'neutra' | 'fría';
+  flickerScore: number;
+  backlightScore: number;
+  shakeScore: number;
+  hazeScore: number;
+}
+
+export type SocialMode = 'monologo' | 'conversacion' | 'coexistencia' | 'silencio' | 'sin_datos';
+
+export interface SocialFrame {
+  mode: SocialMode;
+  label: string;
+  activeVoices: number;
 }
 
 export interface AnalysisFrame {
@@ -165,6 +280,11 @@ export interface AnalysisFrame {
   hands: HandsFrame;
   objects: ObjectDetection[];
   voice: VoiceFrame;
+  sound: SoundFrame;
+  heartRate: HeartRateFrame;
+  sceneMotion: SceneMotionFrame;
+  ambient: AmbientFrame;
+  social: SocialFrame;
   firewall: FirewallAlert[];
   dataQuality: QualitySignal;
   lighting: QualitySignal;

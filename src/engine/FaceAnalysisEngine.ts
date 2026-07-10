@@ -1,11 +1,15 @@
 import { FaceLandmarker, FilesetResolver, type NormalizedLandmark } from '@mediapipe/tasks-vision';
 import type {
   AnalysisEvent, AnalysisFrame, EmotionName, EmotionScore, FaceBox, FaceObservation, FirewallAlert, HandsFrame,
-  MetricValue, OverlayAlert, QualitySignal
+  MetricValue, OverlayAlert, QualitySignal, SocialFrame
 } from '../types/analysis';
 import { Ema, clamp, distance2D, matrixToEuler, nowId, pct, RollingValue } from '../utils/math';
 import { LM } from './landmarkMap';
 import { EMPTY_VOICE } from './VoiceAnalysisEngine';
+import { EMPTY_SOUND } from './SoundClassificationEngine';
+import { EMPTY_HEART_RATE } from './HeartRateEngine';
+import { EMPTY_SCENE_MOTION } from './SceneMotionEngine';
+import { EMPTY_AMBIENT } from './AmbientVisionEngine';
 
 type Landmark = NormalizedLandmark;
 
@@ -14,7 +18,8 @@ export const EMOTION_LABELS: Record<EmotionName, string> = {
 };
 const labels = EMOTION_LABELS;
 
-const EMPTY_HANDS: HandsFrame = { handsDetected: 0, gestures: [] };
+const EMPTY_HANDS: HandsFrame = { handsDetected: 0, gestures: [], handPositions: [] };
+const EMPTY_SOCIAL: SocialFrame = { mode: 'sin_datos', label: 'Sin datos', activeVoices: 0 };
 const MAX_FACES = 5;
 
 interface EngineState {
@@ -36,6 +41,7 @@ interface EngineState {
   alerts: OverlayAlert[];
   lastEventAt: Record<string, number>;
   firewallState: Record<string, number | undefined>;
+  microState: Partial<Record<EmotionName, number>>;
 }
 
 export class FaceAnalysisEngine {
@@ -68,7 +74,8 @@ export class FaceAnalysisEngine {
     events: [],
     alerts: [],
     lastEventAt: {},
-    firewallState: {}
+    firewallState: {},
+    microState: {}
   };
 
   async init() {
@@ -147,6 +154,7 @@ export class FaceAnalysisEngine {
     const framing = this.framingQuality(box, width, height);
     const dataQuality = this.dataQuality(landmarks.length, framing);
     const firewall = this.firewallCheck(ts, metrics, emotions);
+    this.detectMicroExpressions(ts, emotions);
 
     this.detectEvents(ts, box, dominantEmotion, metrics, eye, headPose, blend, lighting, framing, hands);
 
@@ -165,6 +173,11 @@ export class FaceAnalysisEngine {
       hands,
       objects: [],
       voice: EMPTY_VOICE,
+      sound: EMPTY_SOUND,
+      heartRate: EMPTY_HEART_RATE,
+      sceneMotion: EMPTY_SCENE_MOTION,
+      ambient: EMPTY_AMBIENT,
+      social: EMPTY_SOCIAL,
       firewall,
       dataQuality,
       lighting,
@@ -192,6 +205,11 @@ export class FaceAnalysisEngine {
       hands,
       objects: [],
       voice: EMPTY_VOICE,
+      sound: EMPTY_SOUND,
+      heartRate: EMPTY_HEART_RATE,
+      sceneMotion: EMPTY_SCENE_MOTION,
+      ambient: EMPTY_AMBIENT,
+      social: EMPTY_SOCIAL,
       firewall: [],
       dataQuality: { score: 0, label: 'Sin rostro', ok: false },
       lighting,
@@ -504,13 +522,48 @@ export class FaceAnalysisEngine {
 
       active.push({ key, label, since, severity: 'critical' });
       const eventKey = `firewall_${key}`;
-      if ((this.state.lastEventAt[eventKey] ?? 0) + 30000 > ts) return;
+      if (ts - (this.state.lastEventAt[eventKey] ?? -Infinity) < 30000) return;
       this.state.lastEventAt[eventKey] = ts;
       const ev = { id: nowId(), time: Date.now(), severity: 'critical' as const, title: `FIREWALL EMOCIONAL: ${label}`, detail: 'Nivel crítico mantenido de forma sostenida durante varios segundos' };
       this.state.events.unshift(ev);
       this.state.events = this.state.events.slice(0, 50);
     });
     return active;
+  }
+
+  /**
+   * A microexpression is a genuine emotion leaking through and reverting too fast to be
+   * consciously perceived — classically defined as roughly 1/25s to under a second. Emotions
+   * are recomputed from raw blendshapes every frame (no EMA smoothing on the emotions array
+   * itself), so a rise-then-fall pattern within a short window is visible here even though the
+   * displayed/smoothed metrics elsewhere would never show it.
+   */
+  private readonly MICRO_RISE_THRESHOLD = 55;
+  private readonly MICRO_FALL_THRESHOLD = 25;
+  private readonly MICRO_MIN_MS = 80;
+  private readonly MICRO_MAX_MS = 600;
+
+  private detectMicroExpressions(ts: number, emotions: EmotionScore[]) {
+    const watched: EmotionName[] = ['happy', 'sad', 'angry', 'surprised', 'fearful', 'disgusted'];
+    watched.forEach((name) => {
+      const score = emotions.find((e) => e.name === name)?.score ?? 0;
+      const riseStart = this.state.microState[name];
+      if (score >= this.MICRO_RISE_THRESHOLD && riseStart === undefined) {
+        this.state.microState[name] = ts;
+        return;
+      }
+      if (score <= this.MICRO_FALL_THRESHOLD && riseStart !== undefined) {
+        const duration = ts - riseStart;
+        this.state.microState[name] = undefined;
+        if (duration < this.MICRO_MIN_MS || duration > this.MICRO_MAX_MS) return;
+        const eventKey = `micro_${name}`;
+        if (ts - (this.state.lastEventAt[eventKey] ?? -Infinity) < 6000) return;
+        this.state.lastEventAt[eventKey] = ts;
+        const ev = { id: nowId(), time: Date.now(), severity: 'info' as const, title: `MICROEXPRESIÓN: ${labels[name].toUpperCase()}`, detail: `Destello emocional de ${Math.round(duration)}ms, demasiado breve para percibirse conscientemente` };
+        this.state.events.unshift(ev);
+        this.state.events = this.state.events.slice(0, 50);
+      }
+    });
   }
 
   private detectEvents(
@@ -553,7 +606,7 @@ export class FaceAnalysisEngine {
     ];
     checks.forEach(([key, condition, severity, title, detail, cooldown]) => {
       if (!condition) return;
-      if ((this.state.lastEventAt[key] ?? 0) + (cooldown ?? 4500) > ts) return;
+      if (ts - (this.state.lastEventAt[key] ?? -Infinity) < (cooldown ?? 4500)) return;
       this.state.lastEventAt[key] = ts;
       const ev = { id: nowId(), time: Date.now(), severity, title, detail };
       this.state.events.unshift(ev);

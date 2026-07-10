@@ -3,6 +3,7 @@ import { distance2D, nowId } from '../utils/math';
 
 const LOST_TIMEOUT_MS = 4000;
 const ANALYSIS_WINDOW_MS = 2500;
+const UPDATE_INTERVAL_MS = 90000; // refresh an established person's card periodically while they stay in frame
 const MIN_SAMPLES = 15;
 
 export interface TrackedPerson {
@@ -13,7 +14,8 @@ export interface TrackedPerson {
   emotionSamples: EmotionName[];
   bestFrontality: number;
   bestBox: FaceBox;
-  profiled: boolean;
+  /** 0 = never profiled yet. Otherwise the ts of the last time a PersonSummary card was built. */
+  lastProfiledAt: number;
 }
 
 function boxCenter(box: FaceBox) {
@@ -52,7 +54,7 @@ export class PersonTracker {
         emotionSamples: [],
         bestFrontality: obs.frontality,
         bestBox: obs.box,
-        profiled: false
+        lastProfiledAt: 0
       };
       if (!best) this.people.push(target);
 
@@ -69,18 +71,23 @@ export class PersonTracker {
 
     this.people = this.people.filter((p) => ts - p.lastSeenTs < LOST_TIMEOUT_MS);
 
-    const ready = this.people.filter((p) =>
-      !p.profiled &&
-      ts - p.firstSeenTs >= ANALYSIS_WINDOW_MS &&
-      p.emotionSamples.length >= MIN_SAMPLES
-    );
+    const ready = this.people.filter((p) => {
+      if (p.emotionSamples.length < MIN_SAMPLES) return false;
+      if (p.lastProfiledAt === 0) return ts - p.firstSeenTs >= ANALYSIS_WINDOW_MS;
+      return ts - p.lastProfiledAt >= UPDATE_INTERVAL_MS;
+    });
 
     return { all: this.people, ready };
   }
 
-  markProfiled(id: string) {
+  /** Call once a card has been built (or refreshed) for this person, so mood/photo sampling starts a fresh window for the next periodic update instead of averaging over their entire time on screen. */
+  markProfiled(id: string, ts: number) {
     const p = this.people.find((x) => x.id === id);
-    if (p) p.profiled = true;
+    if (!p) return;
+    p.lastProfiledAt = ts;
+    p.emotionSamples = [];
+    p.bestFrontality = 1;
+    p.bestBox = p.box;
   }
 
   /**
@@ -88,9 +95,9 @@ export class PersonTracker {
    * matching (done outside the tracker, which has no pixel access) confirms it's the same
    * person reappearing — e.g. after turning away or leaving the frame beyond LOST_TIMEOUT_MS.
    */
-  reassignId(tempId: string, canonicalId: string) {
+  reassignId(tempId: string, canonicalId: string, ts: number) {
     const p = this.people.find((x) => x.id === tempId);
-    if (p) { p.id = canonicalId; p.profiled = true; }
+    if (p) { p.id = canonicalId; p.lastProfiledAt = ts; p.emotionSamples = []; }
   }
 
   moodSummary(person: TrackedPerson): { mood: EmotionName; score: number } {
