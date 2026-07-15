@@ -5,6 +5,16 @@ const LOST_TIMEOUT_MS = 4000;
 const ANALYSIS_WINDOW_MS = 2500;
 const UPDATE_INTERVAL_MS = 90000; // refresh an established person's card periodically while they stay in frame
 const MIN_SAMPLES = 15;
+const TRAIL_MIN_INTERVAL_MS = 300; // throttle trail points so standing still doesn't flood the array
+const TRAIL_MIN_MOVE = 8; // px, in video space — ignores jitter while roughly stationary
+const TRAIL_MAX_AGE_MS = 60000;
+const TRAIL_MAX_POINTS = 300; // hard safety cap regardless of age
+
+export interface TrailPoint {
+  x: number;
+  y: number;
+  ts: number;
+}
 
 export interface TrackedPerson {
   id: string;
@@ -16,6 +26,9 @@ export interface TrackedPerson {
   bestBox: FaceBox;
   /** 0 = never profiled yet. Otherwise the ts of the last time a PersonSummary card was built. */
   lastProfiledAt: number;
+  /** Recent path through the frame while this session-scoped id has stayed in view — cleared along with the person once they're forgotten, not tied to any persistent/recognized identity. */
+  trail: TrailPoint[];
+  lastTrailTs: number;
 }
 
 function boxCenter(box: FaceBox) {
@@ -54,7 +67,9 @@ export class PersonTracker {
         emotionSamples: [],
         bestFrontality: obs.frontality,
         bestBox: obs.box,
-        lastProfiledAt: 0
+        lastProfiledAt: 0,
+        trail: [],
+        lastTrailTs: 0
       };
       if (!best) this.people.push(target);
 
@@ -66,6 +81,17 @@ export class PersonTracker {
         target.bestFrontality = obs.frontality;
         target.bestBox = obs.box;
       }
+
+      const c = boxCenter(obs.box);
+      const last = target.trail[target.trail.length - 1];
+      const movedEnough = !last || distance2D(c, last) > TRAIL_MIN_MOVE;
+      if (movedEnough && ts - target.lastTrailTs > TRAIL_MIN_INTERVAL_MS) {
+        target.trail.push({ x: c.x, y: c.y, ts });
+        target.lastTrailTs = ts;
+        target.trail = target.trail.filter((p) => ts - p.ts < TRAIL_MAX_AGE_MS);
+        if (target.trail.length > TRAIL_MAX_POINTS) target.trail = target.trail.slice(-TRAIL_MAX_POINTS);
+      }
+
       matchedThisFrame.add(target);
     });
 

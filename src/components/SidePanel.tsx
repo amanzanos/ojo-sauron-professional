@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react';
-import { Activity, Box, Ear, Eye, FileBarChart, Gauge as GaugeIcon, Hand, Heart, History, Mic, MicOff, ScanFace, TreePine, Users, Users2 } from 'lucide-react';
+import { Activity, Box, Ear, Eye, FileBarChart, Gauge as GaugeIcon, Hand, Heart, History, Mic, MicOff, ScanFace, Store, TreePine, Users, Users2 } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { AnalysisFrame, EmotionName, EnvironmentReport, ObjectInventoryEntry, PersonSummary, SessionReport, SoundCategoryStat, SoundLogEntry, VoiceProfile } from '../types/analysis';
+import type { AnalysisFrame, EmotionName, EnvironmentReport, ObjectInventoryEntry, PersonSummary, SessionReport, SoundCategoryStat, SoundLogEntry, VoiceProfile, ZoneStats } from '../types/analysis';
 import { MetricBar } from './MetricBar';
 import { Gauge } from './Gauge';
 import { GESTURE_ICON } from '../engine/HandGestureEngine';
@@ -23,9 +23,10 @@ interface Props {
   sessionReport: SessionReport;
   environmentReport: EnvironmentReport;
   voiceProfiles: VoiceProfile[];
+  zoneStats: ZoneStats[];
 }
 
-const TABS = ['Resumen', 'Métricas', 'Emociones', 'Interacción', 'Audio', 'Personas', 'Informe', 'Entorno', 'Eventos'] as const;
+const TABS = ['Resumen', 'Métricas', 'Emociones', 'Interacción', 'Audio', 'Personas', 'Informe', 'Entorno', 'Tienda', 'Eventos'] as const;
 type Tab = (typeof TABS)[number];
 
 function timeAgo(ts: number) {
@@ -41,7 +42,7 @@ function formatDuration(ms: number) {
   return `${m}:${s}`;
 }
 
-export function SidePanel({ frame, history, gestureCounts, persons, voiceActive, voiceError, onToggleVoice, objectInventory, soundLog, soundStats, sessionReport, environmentReport, voiceProfiles }: Props) {
+export function SidePanel({ frame, history, gestureCounts, persons, voiceActive, voiceError, onToggleVoice, objectInventory, soundLog, soundStats, sessionReport, environmentReport, voiceProfiles, zoneStats }: Props) {
   const [tab, setTab] = useState<Tab>('Resumen');
   const metric = (key: string) => frame?.metrics.find((m) => m.key === key);
   const emotions = frame?.emotions ?? [];
@@ -432,6 +433,27 @@ export function SidePanel({ frame, history, gestureCounts, persons, voiceActive,
             <div className="emotion-row"><span>Descanso medio</span><b className="mono">{formatDuration(environmentReport.avgBreakMs)}</b></div>
           </div>
         </>
+      )}
+
+      {tab === 'Tienda' && (
+        <div className="panel-section">
+          <div className="section-title"><Store size={16} /> Analítica de zonas</div>
+          {zoneStats.length ? (
+            zoneStats.map((z) => (
+              <div key={z.zoneId} className="emotion-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+                <div className="emotion-row"><span><b>{z.name}</b></span><b>{z.currentOccupancy} ahora</b></div>
+                <div className="emotion-row"><span>Visitas hoy</span><b>{z.totalVisits}</b></div>
+                <div className="emotion-row"><span>Permanencia media</span><b className="mono">{formatDuration(z.avgDwellMs)}</b></div>
+                <div className="emotion-row"><span>Permanencia total</span><b className="mono">{formatDuration(z.totalDwellMs)}</b></div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-hint">Todavía no definiste zonas. Usá el botón "ZONAS" sobre la imagen de cámara para dibujar rectángulos sobre las secciones de la tienda (arrastrando con el mouse) y ponerles nombre.</div>
+          )}
+          <div className="empty-hint" style={{ marginTop: 8 }}>
+            Analítica anónima y agregada — no identifica personas ni guarda fotos ni fichas individuales. Recordá informar a tus clientes con cartelería visible sobre el uso de análisis de vídeo en el local.
+          </div>
+        </div>
       )}
 
       {tab === 'Eventos' && (

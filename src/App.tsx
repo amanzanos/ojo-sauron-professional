@@ -7,13 +7,15 @@ import { FaceIdentityEngine } from './engine/FaceIdentityEngine';
 import { HandGestureEngine } from './engine/HandGestureEngine';
 import { HeartRateEngine } from './engine/HeartRateEngine';
 import { classifyRoomType, computeClutterScore, ObjectDetectionEngine } from './engine/ObjectDetectionEngine';
-import { PersonTracker } from './engine/PersonTracker';
+import { PersonTracker, type TrackedPerson } from './engine/PersonTracker';
 import { EMPTY_SCENE_MOTION, SceneMotionEngine } from './engine/SceneMotionEngine';
 import { EMPTY_SOUND, SoundClassificationEngine } from './engine/SoundClassificationEngine';
 import { EMPTY_VOICE, VoiceAnalysisEngine } from './engine/VoiceAnalysisEngine';
 import { VoiceIdentityEngine } from './engine/VoiceIdentityEngine';
-import type { AnalysisEvent, AnalysisFrame, EmotionName, EnvironmentReport, FaceBox, ObjectInventoryEntry, PersonSummary, SessionReport, SocialFrame, SoundCategoryStat, SoundLogEntry, VoiceProfile } from './types/analysis';
+import { ZoneAnalyticsEngine } from './engine/ZoneAnalyticsEngine';
+import type { AnalysisEvent, AnalysisFrame, EmotionName, EnvironmentReport, FaceBox, ObjectInventoryEntry, PersonSummary, SessionReport, SocialFrame, SoundCategoryStat, SoundLogEntry, StoreZone, VoiceProfile, ZoneStats } from './types/analysis';
 import { clamp, nowId } from './utils/math';
+import { loadZoneStorage, saveZoneStorage, todayStr, type ZoneStorage } from './utils/zoneStorage';
 import './styles/app.css';
 
 function mergeEvents(a: AnalysisEvent[], b: AnalysisEvent[]) {
@@ -64,6 +66,7 @@ function formatElapsed(seconds: number) {
   return `${m}:${s}`;
 }
 
+
 /** Crops a padded, mirrored (natural-looking) snapshot of a face region straight from the video element. */
 function capturePhotoCanvas(video: HTMLVideoElement, box: FaceBox): HTMLCanvasElement {
   const padX = box.width * 0.35;
@@ -99,6 +102,11 @@ export default function App() {
   const sceneMotionEngine = useMemo(() => new SceneMotionEngine(), []);
   const voiceIdentityEngine = useMemo(() => new VoiceIdentityEngine(), []);
   const ambientEngine = useMemo(() => new AmbientVisionEngine(), []);
+  const zoneEngine = useMemo(() => new ZoneAnalyticsEngine(), []);
+  const [zones, setZones] = useState<StoreZone[]>(() => loadZoneStorage().zones);
+  const [editingZones, setEditingZones] = useState(false);
+  const [zoneOccupancy, setZoneOccupancy] = useState<Record<string, number>>({});
+  const [zoneStats, setZoneStats] = useState<ZoneStats[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string>();
   const [voiceActive, setVoiceActive] = useState(false);
@@ -134,6 +142,8 @@ export default function App() {
   const lastVoiceNoPersonEventAt = useRef(0);
   const soundNoPersonStart = useRef<number>();
   const lastSoundNoPersonEventAt = useRef(0);
+  const lastZoneSaveRef = useRef(0);
+  const zoneHistoryRef = useRef<ZoneStorage['history']>([]);
   const sessionAccum = useRef({
     lastTs: 0,
     attentionSum: 0, stressSum: 0, engagementSum: 0, sampleCount: 0,
@@ -147,7 +157,7 @@ export default function App() {
     lastFlush: 0
   });
 
-  const drawOverlay = useCallback((data: AnalysisFrame) => {
+  const drawOverlay = useCallback((data: AnalysisFrame, persons: TrackedPerson[]) => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
@@ -161,6 +171,26 @@ export default function App() {
 
     const sx = canvas.width / video.videoWidth;
     const sy = canvas.height / video.videoHeight;
+
+    // Recent movement path per person (session-scoped id, cleared once they leave frame) — a
+    // faint mirrored polyline, same coordinate convention as the face/object boxes below.
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    persons.forEach((p) => {
+      if (p.trail.length < 2) return;
+      let hash = 0;
+      for (let i = 0; i < p.id.length; i++) hash = (hash * 31 + p.id.charCodeAt(i)) >>> 0;
+      const hue = hash % 360;
+      ctx.strokeStyle = `hsla(${hue}, 80%, 65%, 0.55)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      p.trail.forEach((pt, i) => {
+        const x = canvas.width - pt.x * sx;
+        const y = pt.y * sy;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
 
     data.allFaces.forEach((face) => {
       const isPrimary = face.box === data.faceBox;
@@ -310,6 +340,15 @@ export default function App() {
           profilePerson(p.id, p.bestBox, EMOTION_LABELS[mood], score, ts - p.firstSeenTs);
         });
 
+        // Anonymous zone occupancy — never records which person visited which zone, only counts/durations.
+        const occupancy = zoneEngine.update(allPersons, ts, video.videoWidth, video.videoHeight);
+        setZoneOccupancy(occupancy);
+        setZoneStats(zoneEngine.getStats());
+        if (ts - lastZoneSaveRef.current > 5000) {
+          lastZoneSaveRef.current = ts;
+          saveZoneStorage({ date: todayStr(), zones, stats: zoneEngine.getRawStats(), history: zoneHistoryRef.current });
+        }
+
         // Fusión: sonido de puerta/timbre reciente + persona nueva en escena = "alguien entró".
         soundEngine.getEvents().forEach((ev) => {
           if (seenDoorEventIds.current.has(ev.id)) return;
@@ -378,7 +417,7 @@ export default function App() {
           setSoundLog(soundEngine.getLog());
           setSoundStats(soundEngine.getStats());
         }
-        drawOverlay(merged);
+        drawOverlay(merged, allPersons);
         const value = (key: string) => merged.metrics.find((m) => m.key === key)?.value ?? 0;
         setHistory((h) => [...h.slice(-90), {
           t: new Date().toLocaleTimeString(),
@@ -464,7 +503,7 @@ export default function App() {
         console.error(err);
       }
     }
-  }, [ambientEngine, drawOverlay, faceEngine, handEngine, heartRateEngine, objectEngine, personTracker, profilePerson, sceneMotionEngine, soundEngine, voiceActive, voiceEngine, voiceIdentityEngine]);
+  }, [ambientEngine, drawOverlay, faceEngine, handEngine, heartRateEngine, objectEngine, personTracker, profilePerson, sceneMotionEngine, soundEngine, voiceActive, voiceEngine, voiceIdentityEngine, zoneEngine, zones]);
 
   // requestAnimationFrame recursion closes over whatever `loop` looked like the instant it was
   // first scheduled — reactive state read inside it (like voiceActive) would otherwise be frozen
@@ -512,6 +551,37 @@ export default function App() {
     }
   }, [voiceActive, voiceEngine, soundEngine]);
 
+  useEffect(() => {
+    const stored = loadZoneStorage();
+    zoneEngine.setZones(stored.zones);
+    zoneEngine.loadStats(stored.stats);
+    zoneHistoryRef.current = stored.history;
+    setZoneStats(zoneEngine.getStats());
+  }, [zoneEngine]);
+
+  const toggleEditZones = useCallback(() => setEditingZones((v) => !v), []);
+
+  // Zone definitions are a deliberate, infrequent action (drawing/deleting a zone) — saved to
+  // localStorage immediately rather than waiting for the periodic ~5s stats flush, so closing
+  // the tab right after setting up the store layout doesn't lose it.
+  const addZone = useCallback((zone: StoreZone) => {
+    setZones((prev) => {
+      const next = [...prev, zone];
+      zoneEngine.setZones(next);
+      saveZoneStorage({ date: todayStr(), zones: next, stats: zoneEngine.getRawStats(), history: zoneHistoryRef.current });
+      return next;
+    });
+  }, [zoneEngine]);
+
+  const deleteZone = useCallback((id: string) => {
+    setZones((prev) => {
+      const next = prev.filter((z) => z.id !== id);
+      zoneEngine.setZones(next);
+      saveZoneStorage({ date: todayStr(), zones: next, stats: zoneEngine.getRawStats(), history: zoneHistoryRef.current });
+      return next;
+    });
+  }, [zoneEngine]);
+
   useEffect(() => () => {
     if (raf.current) cancelAnimationFrame(raf.current);
     const stream = videoRef.current?.srcObject as MediaStream | undefined;
@@ -533,6 +603,12 @@ export default function App() {
         voiceActive={voiceActive}
         voiceError={voiceError}
         onToggleVoice={toggleVoice}
+        zones={zones}
+        zoneOccupancy={zoneOccupancy}
+        editingZones={editingZones}
+        onToggleEditZones={toggleEditZones}
+        onAddZone={addZone}
+        onDeleteZone={deleteZone}
       />
       <SidePanel
         frame={frame}
@@ -548,6 +624,7 @@ export default function App() {
         sessionReport={sessionReport}
         environmentReport={environmentReport}
         voiceProfiles={voiceProfiles}
+        zoneStats={zoneStats}
       />
     </main>
   );

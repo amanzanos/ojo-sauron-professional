@@ -257,6 +257,25 @@ export interface AmbientFrame {
   hazeScore: number;
 }
 
+/** A store-owner-drawn rectangle, normalized 0-1 against raw (unmirrored) video pixel space. */
+export interface StoreZone {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ZoneStats {
+  zoneId: string;
+  name: string;
+  currentOccupancy: number;
+  totalVisits: number;
+  totalDwellMs: number;
+  avgDwellMs: number;
+}
+
 export type SocialMode = 'monologo' | 'conversacion' | 'coexistencia' | 'silencio' | 'sin_datos';
 
 export interface SocialFrame {
