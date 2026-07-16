@@ -56,7 +56,7 @@ export function SidePanel({ frame, history, gestureCounts, persons, voiceActive,
   return (
     <aside className="panel">
       <div className="tab-bar">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t !== 'Tienda').map((t) => (
           <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>

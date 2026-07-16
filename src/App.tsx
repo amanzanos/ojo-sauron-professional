@@ -520,7 +520,7 @@ export default function App() {
     setError(undefined);
     try {
       await Promise.all([faceEngine.init(), handEngine.init(), objectEngine.init(), identityEngine.init(), soundEngine.init()]);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
       const video = videoRef.current;
       if (!video) return;
       video.srcObject = stream;

@@ -128,11 +128,6 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
         </div>
         <div className="topbar-right">
           {ready && (
-            <button className={`voice-toggle ${editingZones ? 'active' : ''}`} onClick={onToggleEditZones} title={editingZones ? 'Terminar de editar zonas' : 'Dibujar zonas de la tienda (arrastrar sobre el video)'}>
-              <MapPin size={13} /> {editingZones ? 'EDITANDO ZONAS' : 'ZONAS'}
-            </button>
-          )}
-          {ready && (
             <button className={`voice-toggle ${voiceActive ? 'active' : ''}`} onClick={onToggleVoice} title={voiceActive ? 'Desactivar análisis de audio' : 'Activar análisis de audio (voz + sonido ambiente)'}>
               {voiceActive ? <Mic size={13} /> : <MicOff size={13} />} AUDIO
             </button>
