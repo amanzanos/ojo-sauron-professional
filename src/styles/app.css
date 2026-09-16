@@ -182,6 +182,49 @@ input, textarea { font: inherit; }
 .battery-threshold-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-dim); }
 .battery-threshold-row input { width: 60px; border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 8px; padding: 8px; text-align: center; }
 
+/* ---- Gym tracker ---- */
+.gym { max-width: 640px; margin: 0 auto; padding: 20px 16px 100px; display: flex; flex-direction: column; gap: 14px; }
+.gym-subtabs { display: flex; gap: 4px; background: rgba(255,255,255,.03); border: 1px solid var(--line-soft); border-radius: 8px; padding: 4px; }
+.gym-subtabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: transparent; color: var(--text-faint); font-size: 11.5px; font-weight: 700; padding: 9px 4px; border-radius: 6px; cursor: pointer; }
+.gym-subtabs button.active { background: var(--accent-soft); color: var(--accent); }
+
+.gym-log, .gym-analysis { display: flex; flex-direction: column; gap: 12px; }
+.gym-card { border: 1px solid var(--line-soft); background: rgba(255,255,255,.03); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.gym-centered { align-items: center; text-align: center; }
+
+.gym-exercise-add { display: flex; gap: 8px; }
+.gym-exercise-add input { flex: 1; border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 8px; padding: 9px 12px; }
+.gym-exercise-block { border-top: 1px solid var(--line-soft); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.gym-exercise-head { display: flex; align-items: center; justify-content: space-between; }
+.gym-exercise-head strong { font-size: 13px; color: var(--text); }
+.gym-set-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.gym-set-row input { width: 52px; border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 6px; padding: 5px 6px; text-align: center; }
+.gym-add-set { align-self: flex-start; border: 1px dashed var(--line-soft); background: transparent; color: var(--text-faint); font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer; }
+.gym-notes { border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 8px; padding: 9px 12px; resize: vertical; }
+
+.gym-history { display: flex; flex-direction: column; gap: 8px; }
+.gym-session-card { border: 1px solid var(--line-soft); background: rgba(255,255,255,.025); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.gym-session-head { display: flex; align-items: center; justify-content: space-between; }
+.gym-session-exercises { display: flex; flex-direction: column; gap: 2px; }
+.gym-session-notes { margin: 2px 0 0; font-style: italic; color: var(--text-faint); }
+
+.gym-weight-add { display: flex; gap: 8px; }
+.gym-weight-add input { width: 110px; border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 8px; padding: 9px 12px; text-align: center; }
+
+.gym-chart-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.gym-select { border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 8px; padding: 8px 10px; }
+
+.gym-stats-row { display: flex; gap: 10px; }
+.gym-stat { flex: 1; border: 1px solid var(--line-soft); background: rgba(255,255,255,.03); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.gym-stat svg { color: var(--accent); }
+.gym-stat strong { font-family: var(--mono); font-size: 20px; color: var(--text); }
+.gym-stat span { font-size: 10.5px; color: var(--text-faint); }
+
+.gym-pr-list { display: flex; flex-direction: column; gap: 6px; }
+.gym-pr-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--text-dim); border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+.gym-pr-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.gym-pr-row small { color: var(--text-faint); }
+
 /* ---- SOS alert button + modal ---- */
 .sos-fab {
   position: fixed; right: 22px; bottom: 22px; z-index: 1000;

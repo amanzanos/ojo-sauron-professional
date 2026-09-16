@@ -1,3 +1,5 @@
+import { isSilentMode } from './silentMode';
+
 // Best-effort voice-gender heuristic — SpeechSynthesisVoice exposes no gender field, so this
 // matches on common male/female Spanish voice names across platforms (macOS/iOS, Windows, Chrome's
 // network voices). Android's built-in voices often use opaque codenames with no name signal at
@@ -39,6 +41,7 @@ export function speak(text: string, options: SpeakOptions = {}): Promise<void> {
   const { lang = 'es-ES', pitch = DEFAULT_PITCH, rate = DEFAULT_RATE } = options;
   return new Promise((resolve) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) { resolve(); return; }
+    if (isSilentMode()) { resolve(); return; } // muted, not broken — callers still get their reply text/UI
     try {
       window.speechSynthesis.cancel(); // don't queue behind a stale previous utterance
       const utterance = new SpeechSynthesisUtterance(text);

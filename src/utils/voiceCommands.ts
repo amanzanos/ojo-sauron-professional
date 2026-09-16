@@ -1,5 +1,5 @@
 export type VoiceIntent =
-  | { type: 'navigate'; tab: 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' }
+  | { type: 'navigate'; tab: 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym' }
   | { type: 'witness'; action: 'start' | 'stop' }
   | { type: 'alert' }
   | { type: 'nearby' }
@@ -17,11 +17,12 @@ export type VoiceIntent =
   | { type: 'googleSearch'; query: string }
   | { type: 'unknown' };
 
-const NAV_RULES: Array<{ words: string[]; tab: 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' }> = [
+const NAV_RULES: Array<{ words: string[]; tab: 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym' }> = [
   { words: ['comunidad', 'feed', 'noticias'], tab: 'feed' },
   { words: ['mapa'], tab: 'mapa' },
   { words: ['vigilancia', 'camara'], tab: 'camara' },
-  { words: ['herramientas'], tab: 'tools' }
+  { words: ['herramientas'], tab: 'tools' },
+  { words: ['gimnasio', 'gym'], tab: 'gym' }
 ];
 
 // "abre el mapa" (no app name) keeps meaning "the WEROS map tab" — NAV_RULES already owns that

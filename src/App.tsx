@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Map as MapIcon, Radar, Rss, Wrench } from 'lucide-react';
+import { Dumbbell, Eye, Map as MapIcon, Radar, Rss, Wrench } from 'lucide-react';
 import { AlertButton } from './components/AlertButton';
 import { CameraStage } from './components/CameraStage';
 import { CityMap } from './components/CityMap';
 import { DailyGreeting } from './components/DailyGreeting';
 import { Feed } from './components/Feed';
+import { GymTracker } from './components/GymTracker';
 import { SidePanel } from './components/SidePanel';
 import { ToolsHub } from './components/ToolsHub';
 import { VoiceAssistant } from './components/VoiceAssistant';
@@ -40,7 +41,7 @@ import { loadGeofences } from './utils/geofenceStorage';
 import { fetchTodayStats, fetchZones, reportVisit, saveZones, type ZoneServerStats } from './utils/zoneStorage';
 import './styles/app.css';
 
-type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools';
+type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym';
 
 function mergeEvents(a: AnalysisEvent[], b: AnalysisEvent[]) {
   const map = new Map<string, AnalysisEvent>();
@@ -732,6 +733,7 @@ export default function App() {
           <button className={tab === 'testigo' ? 'active' : ''} onClick={() => setTab('testigo')}><Eye size={15} /> Testigo</button>
           <button className={tab === 'camara' ? 'active' : ''} onClick={() => setTab('camara')}><Radar size={15} /> Vigilancia</button>
           <button className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')}><Wrench size={15} /> Herramientas</button>
+          <button className={tab === 'gym' ? 'active' : ''} onClick={() => setTab('gym')}><Dumbbell size={15} /> Gym</button>
         </nav>
       </header>
 
@@ -747,6 +749,7 @@ export default function App() {
             battery={{ supported: batteryAlert.supported, enabled: batteryAlert.enabled, level: batteryAlert.level, start: batteryAlert.start, stop: batteryAlert.stop }}
           />
         )}
+        {tab === 'gym' && <GymTracker />}
         {tab === 'testigo' && (
           <WitnessMode
             command={witnessCommand}

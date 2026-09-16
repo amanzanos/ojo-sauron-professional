@@ -25,6 +25,17 @@ Red ciudadana para situaciones de calle: reporta y consulta incidentes cercanos 
 - **Pantalla siempre encendida durante el modo testigo**: mientras grabas, se pide un Wake Lock para que el teléfono no se bloquee solo y corte la grabación a media captura.
 - Ya existían (de antes): vibración, llamar al contacto por voz, consultar batería, compartir clips por `navigator.share`.
 
+### Gym
+Pestaña propia (no dentro de Herramientas — necesita más sitio en pantalla para los gráficos) con tres vistas:
+- **Registrar**: añade ejercicios a una sesión con sus series (repeticiones × kg) y guárdala. El nombre del ejercicio autocompleta con los que ya has usado.
+- **Peso**: registro rápido de peso corporal, con su propio gráfico de evolución.
+- **Análisis**: racha de semanas seguidas entrenando, progresión por ejercicio (peso máximo y 1RM estimado por la fórmula de Epley a partir de tu mejor serie de cada sesión), volumen semanal total (Σ peso×reps) y récords personales por ejercicio.
+
+Todo se guarda en `localStorage` — no hay backend ni sincronización entre dispositivos, es un cuaderno de entrenamiento local.
+
+### Modo silencioso
+Chip junto a "Manos libres" y "Notificaciones". Mientras está activo, `speak()` no reproduce nada (para una reunión, una clase, o cualquier momento en que la voz del asistente moleste) — las respuestas a comandos de voz se siguen mostrando como texto en la burbuja del asistente, solo se calla el audio. No afecta a las notificaciones visuales ni a la vibración, que siguen funcionando igual que el interruptor de silencio de un teléfono normal.
+
 ### Saludo diario
 - Al abrir la app por primera vez ese día, WEROS te saluda **solo, sin tocar nada**: voz, tiempo de hoy (Open-Meteo, gratis, sin API key, usando tu ubicación) y un resumen rápido de cuántas incidencias se han reportado hoy en la comunidad. Aparece una franja discreta mientras habla, con una X para cortarlo si no te interesa en ese momento.
 - Esto funciona porque la síntesis de voz del navegador (`speechSynthesis`) no está sujeta a la política de autoplay que sí bloquea `<audio>`/`<video>` sin gesto previo — por eso la voz suena sola, a diferencia de un vídeo o una canción.

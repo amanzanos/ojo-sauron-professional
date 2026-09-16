@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, BellOff, Bot, Ear, Mic } from 'lucide-react';
+import { Bell, BellOff, Bot, Ear, Mic, Volume2, VolumeX } from 'lucide-react';
 import type { CitizenEvent } from '../types/citizen';
 import { categoryMeta } from '../types/citizen';
 import { loadAlertContact } from '../utils/alertContact';
@@ -8,11 +8,12 @@ import { distanceMeters, getCurrentPosition } from '../utils/geo';
 import { FORCE_HANDS_FREE_EVENT } from '../utils/handsFreeBus';
 import { disableNotifications, enableNotifications, notificationsEnabled, notificationsSupported, notify } from '../utils/notify';
 import { APP_LABELS, APP_LINKS, callLink, getBatteryLevel, googleSearchLink, vibrate } from '../utils/phone';
+import { isSilentMode, setSilentMode } from '../utils/silentMode';
 import { pick, speak } from '../utils/tts';
 import { parseVoiceCommand, startsWithWakeWord, stripWakeWord } from '../utils/voiceCommands';
 import { fetchWeather } from '../utils/weather';
 
-type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools';
+type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym';
 
 interface VoiceAssistantProps {
   citizenEvents: CitizenEvent[];
@@ -23,7 +24,7 @@ interface VoiceAssistantProps {
 }
 
 const NEARBY_RADIUS_M = 2000;
-const TAB_LABELS: Record<WerosTab, string> = { feed: 'Comunidad', mapa: 'Mapa', testigo: 'Testigo', camara: 'Vigilancia', tools: 'Herramientas' };
+const TAB_LABELS: Record<WerosTab, string> = { feed: 'Comunidad', mapa: 'Mapa', testigo: 'Testigo', camara: 'Vigilancia', tools: 'Herramientas', gym: 'Gym' };
 const HANDS_FREE_KEY = 'weros.assistant.handsFree.v1';
 
 function loadHandsFreePref(): boolean {
@@ -49,6 +50,7 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
   const [supported, setSupported] = useState(true);
   const [handsFree, setHandsFree] = useState(loadHandsFreePref);
   const [notifOn, setNotifOn] = useState(notificationsEnabled);
+  const [silent, setSilent] = useState(isSilentMode);
   const [lastHeard, setLastHeard] = useState<string>();
   const [reply, setReply] = useState<string>();
   const recognitionRef = useRef<SpeechRecognitionLike>();
@@ -296,6 +298,14 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
     setNotifOn(granted);
   }, [notifOn]);
 
+  const toggleSilent = useCallback(() => {
+    setSilent((prev) => {
+      const next = !prev;
+      setSilentMode(next);
+      return next;
+    });
+  }, []);
+
   if (!supported) return null;
 
   return (
@@ -315,6 +325,9 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
             {notifOn ? <Bell size={12} /> : <BellOff size={12} />} Notificaciones
           </button>
         )}
+        <button className={`assistant-chip ${silent ? 'active' : ''}`} onClick={toggleSilent} title="Silencia la voz del asistente">
+          {silent ? <VolumeX size={12} /> : <Volume2 size={12} />} Modo silencioso
+        </button>
       </div>
       <button className={`assistant-fab ${listening ? 'listening' : ''}`} onClick={toggleListening} aria-label="Asistente de voz WEROS">
         <Mic size={20} />
