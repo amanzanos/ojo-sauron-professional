@@ -123,8 +123,8 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
 
       <div className="topbar">
         <div>
-          <div className="brand">OJO DE SAURON</div>
-          <div className="subtitle">Centro de análisis conductual en tiempo real</div>
+          <div className="brand">WEROS · VIGILANCIA</div>
+          <div className="subtitle">Cámara de vigilancia comunitaria en tiempo real</div>
         </div>
         <div className="topbar-right">
           {ready && (
@@ -178,8 +178,8 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
 
       {!ready && !error && (
         <div className="center-card">
-          <h1>Analysis Center</h1>
-          <p>Activa la cámara para iniciar el análisis facial, gestual y conductual en tiempo real.</p>
+          <h1>Modo vigilancia</h1>
+          <p>Activa la cámara para vigilar tu entorno con análisis facial, gestual y conductual en tiempo real.</p>
           <button onClick={onStart}>Iniciar cámara</button>
         </div>
       )}

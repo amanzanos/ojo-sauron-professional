@@ -27,7 +27,97 @@ body {
   overflow: hidden;
 }
 button { font: inherit; }
+input, textarea { font: inherit; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ---- WEROS shell: top nav + tab content, wraps the camera app-shell as one of its tabs ---- */
+.weros-shell { height: 100vh; width: 100vw; display: flex; flex-direction: column; background: var(--bg-0); }
+.weros-topnav {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 20px; border-bottom: 1px solid var(--line);
+  background: rgba(7,6,5,.92); backdrop-filter: blur(18px); z-index: 20;
+}
+.weros-logo { font-family: var(--mono); font-weight: 800; letter-spacing: .28em; font-size: 15px; color: var(--accent); }
+.weros-tabs { display: flex; gap: 6px; background: rgba(255,255,255,.03); border: 1px solid var(--line-soft); border-radius: 999px; padding: 4px; }
+.weros-tabs button {
+  display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--text-faint);
+  font-size: 12px; font-weight: 700; letter-spacing: .03em; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.weros-tabs button.active { background: var(--accent-soft); color: var(--accent); }
+.weros-tabs button:not(.active):hover { color: var(--text-dim); }
+.weros-content { flex: 1; min-height: 0; overflow: auto; position: relative; }
+.weros-content .app-shell { position: static; height: 100%; }
+
+/* ---- Feed ---- */
+.feed { max-width: 640px; margin: 0 auto; padding: 20px 16px 100px; display: flex; flex-direction: column; gap: 14px; }
+.feed-new-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px dashed var(--line); background: rgba(240,180,41,.06); color: var(--accent);
+  font-weight: 700; font-size: 13px; padding: 13px; border-radius: 10px; cursor: pointer;
+}
+.feed-composer { border: 1px solid var(--line-soft); background: rgba(255,255,255,.03); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.feed-category-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.feed-category-chip { border: 1px solid var(--line-soft); background: rgba(255,255,255,.03); color: var(--text-dim); font-size: 11.5px; font-weight: 600; padding: 7px 11px; border-radius: 999px; cursor: pointer; }
+.feed-category-chip.active { background: rgba(255,255,255,.06); }
+.feed-input, .feed-textarea { width: 100%; border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 8px; padding: 10px 12px; resize: vertical; }
+.feed-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.feed-geo-hint { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-faint); }
+.feed-submit { display: flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent); color: #0a0806; font-weight: 800; padding: 9px 16px; border-radius: 8px; cursor: pointer; }
+.feed-submit:disabled { opacity: .5; cursor: not-allowed; }
+.feed-list { display: flex; flex-direction: column; gap: 10px; }
+.feed-card { border: 1px solid var(--line-soft); background: rgba(255,255,255,.025); border-radius: 12px; padding: 14px; }
+.feed-card-head { display: flex; align-items: center; gap: 10px; }
+.feed-card-icon { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.feed-card-headtext { display: flex; flex-direction: column; gap: 2px; }
+.feed-card-headtext strong { font-size: 14px; color: var(--text); }
+.feed-card-headtext span { font-size: 11px; color: var(--text-faint); }
+.feed-card-desc { margin: 10px 0 0; font-size: 13px; color: var(--text-dim); line-height: 1.45; }
+.feed-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 11px; color: var(--text-faint); }
+.feed-card-foot span { display: flex; align-items: center; gap: 4px; }
+
+/* ---- Map ---- */
+.map-wrap { position: relative; height: 100%; width: 100%; }
+.map-legend { position: absolute; left: 12px; bottom: 12px; z-index: 500; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 24px); }
+.map-legend span { font-size: 11px; font-weight: 600; color: var(--text); background: rgba(7,6,5,.85); border: 1px solid var(--line-soft); border-radius: 999px; padding: 6px 10px; backdrop-filter: blur(10px); }
+.weros-marker span { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; border: 2px solid rgba(255,255,255,.85); box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+
+/* ---- SOS alert button + modal ---- */
+.sos-fab {
+  position: fixed; right: 22px; bottom: 22px; z-index: 1000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: 66px; height: 66px; border-radius: 50%;
+  background: var(--danger); border: 3px solid rgba(255,255,255,.25); color: #fff;
+  font-weight: 800; font-size: 11px; letter-spacing: .04em; cursor: pointer;
+  box-shadow: 0 0 0 6px rgba(239,68,68,.18), 0 10px 30px rgba(0,0,0,.5);
+  animation: sosPulse 2.2s ease-in-out infinite;
+}
+@keyframes sosPulse { 0%,100% { box-shadow: 0 0 0 6px rgba(239,68,68,.18), 0 10px 30px rgba(0,0,0,.5); } 50% { box-shadow: 0 0 0 12px rgba(239,68,68,.1), 0 10px 30px rgba(0,0,0,.5); } }
+
+.sos-modal-backdrop { position: fixed; inset: 0; z-index: 1001; background: rgba(0,0,0,.7); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.sos-modal { width: min(420px, 100%); max-height: 90vh; overflow: auto; background: var(--bg-1); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+.sos-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sos-modal-head h2 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0; color: var(--danger); }
+.icon-btn { border: 0; background: transparent; color: var(--text-faint); cursor: pointer; padding: 4px; }
+.sos-hint { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin: 0 0 14px; }
+.sos-field { margin-bottom: 10px; }
+.sos-field label { display: block; font-size: 11px; color: var(--text-faint); margin-bottom: 5px; }
+.sos-field input { width: 100%; border: 1px solid var(--line-soft); background: rgba(0,0,0,.3); color: var(--text); border-radius: 8px; padding: 10px 12px; }
+.sos-armed-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-faint); border: 1px solid var(--line-soft); border-radius: 999px; padding: 7px 11px; margin: 8px 0 14px; }
+.sos-armed-badge.ok { color: var(--ok); border-color: rgba(34,197,94,.35); }
+.sos-error { color: var(--danger); font-size: 12px; margin: 0 0 10px; }
+.sos-trigger { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--danger); background: var(--danger); color: #fff; font-weight: 800; padding: 14px; border-radius: 10px; cursor: pointer; }
+.sos-trigger.confirming { background: #fff; color: var(--danger); animation: sosPulse 1s ease-in-out infinite; }
+.sos-trigger:disabled { opacity: .6; cursor: wait; }
+.sos-result { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 10px 0; }
+.sos-result p { color: var(--text-dim); font-size: 13px; margin: 0; }
+.sos-download { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--accent); text-decoration: none; }
+.sos-secondary { margin-top: 8px; border: 1px solid var(--line-soft); background: transparent; color: var(--text-dim); padding: 9px 16px; border-radius: 8px; cursor: pointer; }
+
+@media (max-width: 640px) {
+  .weros-topnav { flex-direction: column; align-items: stretch; gap: 10px; }
+  .weros-tabs button span { display: none; }
+}
 
 .app-shell {
   height: 100vh; width: 100vw;

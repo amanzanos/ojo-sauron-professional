@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Map as MapIcon, Radar, Rss } from 'lucide-react';
+import { AlertButton } from './components/AlertButton';
 import { CameraStage } from './components/CameraStage';
+import { CityMap } from './components/CityMap';
+import { Feed } from './components/Feed';
 import { SidePanel } from './components/SidePanel';
 import { AmbientVisionEngine } from './engine/AmbientVisionEngine';
 import { EMOTION_LABELS, FaceAnalysisEngine } from './engine/FaceAnalysisEngine';
@@ -14,9 +18,13 @@ import { EMPTY_VOICE, VoiceAnalysisEngine } from './engine/VoiceAnalysisEngine';
 import { VoiceIdentityEngine } from './engine/VoiceIdentityEngine';
 import { ZoneAnalyticsEngine } from './engine/ZoneAnalyticsEngine';
 import type { AnalysisEvent, AnalysisFrame, EmotionName, EnvironmentReport, FaceBox, ObjectInventoryEntry, PersonSummary, SessionReport, SocialFrame, SoundCategoryStat, SoundLogEntry, StoreZone, VoiceProfile, ZoneStats } from './types/analysis';
+import type { CitizenCategory, CitizenEvent } from './types/citizen';
+import { createEvent, fetchEvents } from './utils/eventStorage';
 import { clamp, nowId } from './utils/math';
-import { loadZoneStorage, saveZoneStorage, todayStr, type ZoneStorage } from './utils/zoneStorage';
+import { fetchTodayStats, fetchZones, reportVisit, saveZones, type ZoneServerStats } from './utils/zoneStorage';
 import './styles/app.css';
+
+type WerosTab = 'feed' | 'mapa' | 'camara';
 
 function mergeEvents(a: AnalysisEvent[], b: AnalysisEvent[]) {
   const map = new Map<string, AnalysisEvent>();
@@ -103,10 +111,16 @@ export default function App() {
   const voiceIdentityEngine = useMemo(() => new VoiceIdentityEngine(), []);
   const ambientEngine = useMemo(() => new AmbientVisionEngine(), []);
   const zoneEngine = useMemo(() => new ZoneAnalyticsEngine(), []);
-  const [zones, setZones] = useState<StoreZone[]>(() => loadZoneStorage().zones);
+  const [tab, setTab] = useState<WerosTab>('feed');
+  const [citizenEvents, setCitizenEvents] = useState<CitizenEvent[]>([]);
+  const [zones, setZones] = useState<StoreZone[]>([]);
   const [editingZones, setEditingZones] = useState(false);
   const [zoneOccupancy, setZoneOccupancy] = useState<Record<string, number>>({});
-  const [zoneStats, setZoneStats] = useState<ZoneStats[]>([]);
+  const [zoneServerStats, setZoneServerStats] = useState<ZoneServerStats[]>([]);
+  const zoneStats = useMemo<ZoneStats[]>(
+    () => zoneServerStats.map((s) => ({ ...s, currentOccupancy: zoneOccupancy[s.zoneId] ?? 0 })),
+    [zoneServerStats, zoneOccupancy]
+  );
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string>();
   const [voiceActive, setVoiceActive] = useState(false);
@@ -142,8 +156,7 @@ export default function App() {
   const lastVoiceNoPersonEventAt = useRef(0);
   const soundNoPersonStart = useRef<number>();
   const lastSoundNoPersonEventAt = useRef(0);
-  const lastZoneSaveRef = useRef(0);
-  const zoneHistoryRef = useRef<ZoneStorage['history']>([]);
+  const lastZoneStatsFetchRef = useRef(0);
   const sessionAccum = useRef({
     lastTs: 0,
     attentionSum: 0, stressSum: 0, engagementSum: 0, sampleCount: 0,
@@ -341,12 +354,12 @@ export default function App() {
         });
 
         // Anonymous zone occupancy — never records which person visited which zone, only counts/durations.
-        const occupancy = zoneEngine.update(allPersons, ts, video.videoWidth, video.videoHeight);
+        const { occupancy, closedVisits } = zoneEngine.update(allPersons, ts, video.videoWidth, video.videoHeight);
         setZoneOccupancy(occupancy);
-        setZoneStats(zoneEngine.getStats());
-        if (ts - lastZoneSaveRef.current > 5000) {
-          lastZoneSaveRef.current = ts;
-          saveZoneStorage({ date: todayStr(), zones, stats: zoneEngine.getRawStats(), history: zoneHistoryRef.current });
+        closedVisits.forEach((v) => reportVisit(v.zoneId, v.dwellMs));
+        if (ts - lastZoneStatsFetchRef.current > 5000) {
+          lastZoneStatsFetchRef.current = ts;
+          fetchTodayStats().then(setZoneServerStats).catch((err) => console.error('No se pudieron cargar las estadísticas de zona', err));
         }
 
         // Fusión: sonido de puerta/timbre reciente + persona nueva en escena = "alguien entró".
@@ -503,7 +516,7 @@ export default function App() {
         console.error(err);
       }
     }
-  }, [ambientEngine, drawOverlay, faceEngine, handEngine, heartRateEngine, objectEngine, personTracker, profilePerson, sceneMotionEngine, soundEngine, voiceActive, voiceEngine, voiceIdentityEngine, zoneEngine, zones]);
+  }, [ambientEngine, drawOverlay, faceEngine, handEngine, heartRateEngine, objectEngine, personTracker, profilePerson, sceneMotionEngine, soundEngine, voiceActive, voiceEngine, voiceIdentityEngine, zoneEngine]);
 
   // requestAnimationFrame recursion closes over whatever `loop` looked like the instant it was
   // first scheduled — reactive state read inside it (like voiceActive) would otherwise be frozen
@@ -552,23 +565,39 @@ export default function App() {
   }, [voiceActive, voiceEngine, soundEngine]);
 
   useEffect(() => {
-    const stored = loadZoneStorage();
-    zoneEngine.setZones(stored.zones);
-    zoneEngine.loadStats(stored.stats);
-    zoneHistoryRef.current = stored.history;
-    setZoneStats(zoneEngine.getStats());
+    fetchZones()
+      .then((z) => { setZones(z); zoneEngine.setZones(z); })
+      .catch((err) => console.error('No se pudieron cargar las zonas', err));
   }, [zoneEngine]);
+
+  const refreshEvents = useCallback(() => {
+    fetchEvents()
+      .then(setCitizenEvents)
+      .catch((err) => console.error('No se pudieron cargar los eventos ciudadanos', err));
+  }, []);
+
+  useEffect(() => {
+    refreshEvents();
+    const interval = window.setInterval(refreshEvents, 30000);
+    return () => window.clearInterval(interval);
+  }, [refreshEvents]);
+
+  const createCitizenEvent = useCallback(async (input: { category: CitizenCategory; title: string; description: string; lat: number; lng: number }) => {
+    const created = await createEvent({ ...input, authorLabel: 'Vecino/a' });
+    setCitizenEvents((prev) => [created, ...prev]);
+  }, []);
 
   const toggleEditZones = useCallback(() => setEditingZones((v) => !v), []);
 
-  // Zone definitions are a deliberate, infrequent action (drawing/deleting a zone) — saved to
-  // localStorage immediately rather than waiting for the periodic ~5s stats flush, so closing
-  // the tab right after setting up the store layout doesn't lose it.
+  // Zone definitions are a deliberate, infrequent action (drawing/deleting a zone) — the UI
+  // updates optimistically (instant feedback) while the save to the backend happens in the
+  // background; PUT /api/zones is a full-replace so this always converges even if a request
+  // arrives out of order.
   const addZone = useCallback((zone: StoreZone) => {
     setZones((prev) => {
       const next = [...prev, zone];
       zoneEngine.setZones(next);
-      saveZoneStorage({ date: todayStr(), zones: next, stats: zoneEngine.getRawStats(), history: zoneHistoryRef.current });
+      saveZones(next).catch((err) => console.error('No se pudo guardar la zona', err));
       return next;
     });
   }, [zoneEngine]);
@@ -577,7 +606,7 @@ export default function App() {
     setZones((prev) => {
       const next = prev.filter((z) => z.id !== id);
       zoneEngine.setZones(next);
-      saveZoneStorage({ date: todayStr(), zones: next, stats: zoneEngine.getRawStats(), history: zoneHistoryRef.current });
+      saveZones(next).catch((err) => console.error('No se pudo borrar la zona', err));
       return next;
     });
   }, [zoneEngine]);
@@ -591,41 +620,60 @@ export default function App() {
   }, [voiceEngine, soundEngine]);
 
   return (
-    <main className="app-shell">
-      <CameraStage
-        videoRef={videoRef}
-        canvasRef={canvasRef}
-        frame={frame}
-        ready={ready}
-        error={error}
-        onStart={start}
-        elapsedLabel={formatElapsed(elapsed)}
-        voiceActive={voiceActive}
-        voiceError={voiceError}
-        onToggleVoice={toggleVoice}
-        zones={zones}
-        zoneOccupancy={zoneOccupancy}
-        editingZones={editingZones}
-        onToggleEditZones={toggleEditZones}
-        onAddZone={addZone}
-        onDeleteZone={deleteZone}
-      />
-      <SidePanel
-        frame={frame}
-        history={history}
-        gestureCounts={gestureCounts}
-        persons={persons}
-        voiceActive={voiceActive}
-        voiceError={voiceError}
-        onToggleVoice={toggleVoice}
-        objectInventory={objectInventory}
-        soundLog={soundLog}
-        soundStats={soundStats}
-        sessionReport={sessionReport}
-        environmentReport={environmentReport}
-        voiceProfiles={voiceProfiles}
-        zoneStats={zoneStats}
-      />
-    </main>
+    <div className="weros-shell">
+      <header className="weros-topnav">
+        <span className="weros-logo">WEROS</span>
+        <nav className="weros-tabs">
+          <button className={tab === 'feed' ? 'active' : ''} onClick={() => setTab('feed')}><Rss size={15} /> Comunidad</button>
+          <button className={tab === 'mapa' ? 'active' : ''} onClick={() => setTab('mapa')}><MapIcon size={15} /> Mapa</button>
+          <button className={tab === 'camara' ? 'active' : ''} onClick={() => setTab('camara')}><Radar size={15} /> Vigilancia</button>
+        </nav>
+      </header>
+
+      <main className="weros-content">
+        {tab === 'feed' && <Feed events={citizenEvents} onCreate={createCitizenEvent} />}
+        {tab === 'mapa' && <CityMap events={citizenEvents} />}
+        {tab === 'camara' && (
+          <div className="app-shell">
+            <CameraStage
+              videoRef={videoRef}
+              canvasRef={canvasRef}
+              frame={frame}
+              ready={ready}
+              error={error}
+              onStart={start}
+              elapsedLabel={formatElapsed(elapsed)}
+              voiceActive={voiceActive}
+              voiceError={voiceError}
+              onToggleVoice={toggleVoice}
+              zones={zones}
+              zoneOccupancy={zoneOccupancy}
+              editingZones={editingZones}
+              onToggleEditZones={toggleEditZones}
+              onAddZone={addZone}
+              onDeleteZone={deleteZone}
+            />
+            <SidePanel
+              frame={frame}
+              history={history}
+              gestureCounts={gestureCounts}
+              persons={persons}
+              voiceActive={voiceActive}
+              voiceError={voiceError}
+              onToggleVoice={toggleVoice}
+              objectInventory={objectInventory}
+              soundLog={soundLog}
+              soundStats={soundStats}
+              sessionReport={sessionReport}
+              environmentReport={environmentReport}
+              voiceProfiles={voiceProfiles}
+              zoneStats={zoneStats}
+            />
+          </div>
+        )}
+      </main>
+
+      <AlertButton onSent={refreshEvents} />
+    </div>
   );
 }
