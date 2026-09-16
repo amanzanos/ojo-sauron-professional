@@ -22,6 +22,12 @@ export interface SpeakOptions {
   rate?: number;
 }
 
+// Tuned for a measured, "butler" cadence — noticeably deeper and slightly slower than a
+// default TTS voice, without pushing the pitch shift far enough to sound distorted or robotic.
+// This is a system-voice tuning, not a clone of any actor's voice — see the README for why.
+const DEFAULT_PITCH = 0.78;
+const DEFAULT_RATE = 0.92;
+
 /**
  * Speaks a short confirmation aloud (browser TTS, no network/API needed) — e.g. right after an SOS
  * alert fires, so it's audible without having to look at the screen. Returns a promise that
@@ -30,7 +36,7 @@ export interface SpeakOptions {
  * up WEROS's own voice as if it were a new command.
  */
 export function speak(text: string, options: SpeakOptions = {}): Promise<void> {
-  const { lang = 'es-ES', pitch = 0.85, rate = 0.98 } = options;
+  const { lang = 'es-ES', pitch = DEFAULT_PITCH, rate = DEFAULT_RATE } = options;
   return new Promise((resolve) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) { resolve(); return; }
     try {
