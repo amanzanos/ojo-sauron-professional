@@ -3,6 +3,7 @@ import { Eye, Map as MapIcon, Radar, Rss } from 'lucide-react';
 import { AlertButton } from './components/AlertButton';
 import { CameraStage } from './components/CameraStage';
 import { CityMap } from './components/CityMap';
+import { DailyGreeting } from './components/DailyGreeting';
 import { Feed } from './components/Feed';
 import { SidePanel } from './components/SidePanel';
 import { VoiceAssistant } from './components/VoiceAssistant';
@@ -685,6 +686,8 @@ export default function App() {
           <button className={tab === 'camara' ? 'active' : ''} onClick={() => setTab('camara')}><Radar size={15} /> Vigilancia</button>
         </nav>
       </header>
+
+      <DailyGreeting citizenEvents={citizenEvents} />
 
       <main className="weros-content">
         {tab === 'feed' && <Feed events={citizenEvents} onCreate={createCitizenEvent} />}

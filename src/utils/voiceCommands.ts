@@ -7,6 +7,7 @@ export type VoiceIntent =
   | { type: 'readReports' }
   | { type: 'time' }
   | { type: 'battery' }
+  | { type: 'weather' }
   | { type: 'call' }
   | { type: 'vibrate' }
   | { type: 'unknown' };
@@ -49,6 +50,8 @@ export function parseVoiceCommand(raw: string): VoiceIntent {
   if (/que hora es|dime la hora|hora actual/.test(text)) return { type: 'time' };
 
   if (/(cuanta )?bateria|nivel de bateria/.test(text)) return { type: 'battery' };
+
+  if (/que tiempo hace|va a llover|tiempo de hoy|previsión del tiempo|prevision del tiempo/.test(text)) return { type: 'weather' };
 
   if (/^vibra|haz vibrar|vibrar el (movil|telefono)/.test(text)) return { type: 'vibrate' };
 

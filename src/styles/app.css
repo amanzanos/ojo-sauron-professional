@@ -30,6 +30,17 @@ button { font: inherit; }
 input, textarea { font: inherit; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
+/* ---- Daily greeting banner ---- */
+.greeting-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 20px; background: rgba(240,180,41,.08); border-bottom: 1px solid var(--line);
+  color: var(--text); font-size: 12.5px;
+}
+.greeting-banner svg { color: var(--accent); flex-shrink: 0; }
+.greeting-banner span { flex: 1; min-width: 180px; }
+.greeting-play { border: 1px solid var(--accent); background: var(--accent); color: #0a0806; font-weight: 800; font-size: 11.5px; padding: 7px 14px; border-radius: 999px; cursor: pointer; }
+.greeting-play:disabled { opacity: .6; cursor: wait; }
+
 /* ---- WEROS shell: top nav + tab content, wraps the camera app-shell as one of its tabs ---- */
 .weros-shell { height: 100vh; width: 100vw; display: flex; flex-direction: column; background: var(--bg-0); }
 .weros-topnav {

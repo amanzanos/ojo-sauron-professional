@@ -9,6 +9,7 @@ import { disableNotifications, enableNotifications, notificationsEnabled, notifi
 import { callLink, getBatteryLevel, vibrate } from '../utils/phone';
 import { pick, speak } from '../utils/tts';
 import { parseVoiceCommand, startsWithWakeWord, stripWakeWord } from '../utils/voiceCommands';
+import { fetchWeather } from '../utils/weather';
 
 type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara';
 
@@ -107,6 +108,15 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
       case 'battery': {
         const level = await getBatteryLevel();
         await say(level === undefined ? 'Tu navegador no me deja consultar la batería.' : `Te queda un ${level} por ciento de batería.`);
+        break;
+      }
+      case 'weather': {
+        const position = await getCurrentPosition();
+        if (!position) { await say('No pude obtener tu ubicación para consultar el tiempo.'); break; }
+        const weather = await fetchWeather(position);
+        await say(weather
+          ? `Hoy hace ${weather.description}, con una máxima de ${weather.tempMax} grados y una mínima de ${weather.tempMin}.`
+          : 'No pude consultar el tiempo ahora mismo.');
         break;
       }
       case 'vibrate': {

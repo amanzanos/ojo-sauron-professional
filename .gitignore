@@ -3,3 +3,7 @@ dist
 .env
 .DS_Store
 .vercel
+
+# Copyrighted local-only asset for the daily-greeting jingle — never publish this to the public
+# repo/deployment (see public/audio/README.md). Keep this ignore rule even if the filename changes.
+public/audio/
