@@ -22,23 +22,27 @@ function timeGreeting(): string {
 
 /**
  * First-open-of-the-day ritual: voice greeting + today's weather + a one-line summary of recent
- * community reports. Browsers block audio/autoplay without a user gesture, so this can't just
- * fire itself on load — it shows a dismissible card and only speaks once the person taps it.
- * The optional local jingle (public/audio/back-in-black.mp3) is gitignored and never published —
- * see public/audio/README.md — so it plays in local dev only and is silently skipped in production.
+ * community reports. Fires on its own the first time the app opens each day — unlike <audio>/
+ * <video>, the Web Speech API's speechSynthesis isn't gated by the browser's autoplay policy, so
+ * this doesn't need a tap to unlock it. The optional local jingle (public/audio/back-in-black.mp3,
+ * gitignored — see public/audio/README.md) is a real <audio> element though, so *that* part can
+ * still get silently blocked without a prior interaction; harmless either way, the voice covers it.
  */
 export function DailyGreeting({ citizenEvents }: DailyGreetingProps) {
   const [visible, setVisible] = useState(false);
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>();
+  const startedRef = useRef(false);
 
-  useEffect(() => {
-    setVisible(shouldGreetToday());
-  }, []);
-
-  const dismiss = () => setVisible(false);
+  const stop = () => {
+    window.speechSynthesis?.cancel();
+    audioRef.current?.pause();
+    setPlaying(false);
+    setVisible(false);
+  };
 
   const start = async () => {
+    setVisible(true);
     setPlaying(true);
     markGreetedToday();
 
@@ -54,8 +58,8 @@ export function DailyGreeting({ citizenEvents }: DailyGreetingProps) {
       }
     }
 
-    // Best-effort local jingle — a 404 in production (where the gitignored file doesn't exist)
-    // is expected, not an error.
+    // Best-effort local jingle — blocked-autoplay or a 404 in production (where the gitignored
+    // file doesn't exist) are both expected, not errors.
     try {
       const audio = new Audio('/audio/back-in-black.mp3');
       audio.volume = 0.35;
@@ -94,14 +98,22 @@ export function DailyGreeting({ citizenEvents }: DailyGreetingProps) {
     setVisible(false);
   };
 
+  useEffect(() => {
+    if (startedRef.current) return;
+    if (shouldGreetToday()) {
+      startedRef.current = true;
+      start();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (!visible) return null;
 
   return (
     <div className="greeting-banner">
       <Sun size={16} />
-      <span>{timeGreeting()} — toca para tu saludo con el resumen y el tiempo de hoy.</span>
-      <button className="greeting-play" onClick={start} disabled={playing}>{playing ? 'Reproduciendo…' : 'Empezar mi día'}</button>
-      <button className="icon-btn" onClick={dismiss} aria-label="Cerrar"><X size={16} /></button>
+      <span>{playing ? `${timeGreeting()} — dándote el resumen y el tiempo de hoy…` : `${timeGreeting()}.`}</span>
+      <button className="icon-btn" onClick={stop} aria-label="Detener saludo"><X size={16} /></button>
     </div>
   );
 }
