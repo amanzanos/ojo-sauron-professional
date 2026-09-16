@@ -16,6 +16,12 @@ Red ciudadana para situaciones de calle: reporta y consulta incidentes cercanos 
   - Comparte tu ubicación en tiempo real con tu contacto de emergencia por WhatsApp/SMS (enlace `wa.me`, configurable desde el propio botón).
   - Graba en bucle los últimos ~20 segundos de cámara y micrófono (buffer circular) y te deja descargarlos o compartirlos junto con la alerta.
   - Publica automáticamente un evento de tipo "Alerta SOS" en el feed y el mapa para que la comunidad lo vea.
+  - Anuncia por voz (síntesis del navegador) "Alerta enviada a tu contacto de emergencia" — WEROS nunca dice que avisó a la policía, porque no tiene ninguna integración real con ningún cuerpo de seguridad.
+- **Detección automática de sonido de auxilio**: con la pestaña "Vigilancia" abierta y el audio activado, si el clasificador de sonido ambiente detecta un grito, un disparo o una explosión, se abre solo el flujo de alerta con una cuenta atrás cancelable de 8s (con aviso por voz) en vez de un botón que alguien tiene que pulsar a tiempo.
+
+### Modo testigo
+- Graba con la cámara trasera y el micrófono de forma continua (no solo 20s) mientras caminas por una zona que te preocupa, con vista previa en vivo y contador de tiempo.
+- Al detener, la grabación queda para descargar o compartir — se guarda solo en tu dispositivo, WEROS no la sube a ningún sitio.
 
 ### Vigilancia (cámara)
 - Interfaz HUD táctica a pantalla completa con panel lateral por pestañas (Resumen / Métricas / Emociones / Gestos / Eventos).

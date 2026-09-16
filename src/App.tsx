@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Map as MapIcon, Radar, Rss } from 'lucide-react';
+import { Eye, Map as MapIcon, Radar, Rss } from 'lucide-react';
 import { AlertButton } from './components/AlertButton';
 import { CameraStage } from './components/CameraStage';
 import { CityMap } from './components/CityMap';
 import { Feed } from './components/Feed';
 import { SidePanel } from './components/SidePanel';
+import { WitnessMode } from './components/WitnessMode';
 import { AmbientVisionEngine } from './engine/AmbientVisionEngine';
 import { EMOTION_LABELS, FaceAnalysisEngine } from './engine/FaceAnalysisEngine';
 import { FaceIdentityEngine } from './engine/FaceIdentityEngine';
@@ -20,12 +21,13 @@ import { ZoneAnalyticsEngine } from './engine/ZoneAnalyticsEngine';
 import type { AnalysisEvent, AnalysisFrame, EmotionName, EnvironmentReport, FaceBox, ObjectInventoryEntry, PersonSummary, SessionReport, SocialFrame, SoundCategoryStat, SoundLogEntry, StoreZone, VoiceProfile, ZoneStats } from './types/analysis';
 import type { CitizenCategory, CitizenEvent } from './types/citizen';
 import { getRearCameraStream } from './utils/camera';
+import { dispatchDistressSound } from './utils/distressBus';
 import { createEvent, fetchEvents } from './utils/eventStorage';
 import { clamp, nowId } from './utils/math';
 import { fetchTodayStats, fetchZones, reportVisit, saveZones, type ZoneServerStats } from './utils/zoneStorage';
 import './styles/app.css';
 
-type WerosTab = 'feed' | 'mapa' | 'camara';
+type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara';
 
 function mergeEvents(a: AnalysisEvent[], b: AnalysisEvent[]) {
   const map = new Map<string, AnalysisEvent>();
@@ -151,6 +153,8 @@ export default function App() {
   const recentVoiceActivity = useRef<Array<{ id: string; ts: number }>>([]);
   const prevPersonIds = useRef(new Set<string>());
   const seenDoorEventIds = useRef(new Set<string>());
+  const seenDistressEventIds = useRef(new Set<string>());
+  const lastDistressDispatchAt = useRef(0);
   const doorOpenAt = useRef(0);
   const lastPersonEnteredEventAt = useRef(0);
   const voiceNoPersonStart = useRef<number>();
@@ -368,6 +372,20 @@ export default function App() {
           if (seenDoorEventIds.current.has(ev.id)) return;
           seenDoorEventIds.current.add(ev.id);
           if (ev.title.includes('PUERTA') || ev.title.includes('TIMBRE')) doorOpenAt.current = ts;
+        });
+
+        // Sonido de auxilio (grito, disparo, explosión) sostenido en el ambiente: dispara el flujo
+        // de alerta SOS automático (con cuenta atrás cancelable, ver AlertButton) en vez de esperar
+        // a que alguien pueda tocar el botón.
+        const DISTRESS_LABELS = ['GRITO', 'DISPARO', 'EXPLOSIÓN'];
+        soundEngine.getEvents().forEach((ev) => {
+          if (seenDistressEventIds.current.has(ev.id)) return;
+          seenDistressEventIds.current.add(ev.id);
+          const match = DISTRESS_LABELS.find((l) => ev.title.includes(l));
+          if (match && ts - lastDistressDispatchAt.current > 20000) {
+            lastDistressDispatchAt.current = ts;
+            dispatchDistressSound(match === 'GRITO' ? 'grito' : match === 'DISPARO' ? 'disparo' : 'explosión');
+          }
         });
         const currentPersonIds = new Set(allPersons.map((p) => p.id));
         const hasNewPerson = [...currentPersonIds].some((id) => !prevPersonIds.current.has(id));
@@ -627,6 +645,7 @@ export default function App() {
         <nav className="weros-tabs">
           <button className={tab === 'feed' ? 'active' : ''} onClick={() => setTab('feed')}><Rss size={15} /> Comunidad</button>
           <button className={tab === 'mapa' ? 'active' : ''} onClick={() => setTab('mapa')}><MapIcon size={15} /> Mapa</button>
+          <button className={tab === 'testigo' ? 'active' : ''} onClick={() => setTab('testigo')}><Eye size={15} /> Testigo</button>
           <button className={tab === 'camara' ? 'active' : ''} onClick={() => setTab('camara')}><Radar size={15} /> Vigilancia</button>
         </nav>
       </header>
@@ -634,6 +653,7 @@ export default function App() {
       <main className="weros-content">
         {tab === 'feed' && <Feed events={citizenEvents} onCreate={createCitizenEvent} />}
         {tab === 'mapa' && <CityMap events={citizenEvents} />}
+        {tab === 'testigo' && <WitnessMode />}
         {tab === 'camara' && (
           <div className="app-shell">
             <CameraStage

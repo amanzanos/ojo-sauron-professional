@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Download, MessageCircleWarning, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Download, Ear, MessageCircleWarning, ShieldCheck, X } from 'lucide-react';
 import { useAlertRecorder } from '../hooks/useAlertRecorder';
 import { loadAlertContact, saveAlertContact, sanitizePhone } from '../utils/alertContact';
 import { createEvent } from '../utils/eventStorage';
 import { getCurrentPosition, mapsLink } from '../utils/geo';
+import { speak } from '../utils/tts';
 import type { AlertContact } from '../types/citizen';
+import type { DistressSoundDetail } from '../utils/distressBus';
+import { DISTRESS_SOUND_EVENT } from '../utils/distressBus';
 
 type SendState = 'idle' | 'sending' | 'sent' | 'error';
+
+const AUTO_COUNTDOWN_S = 8;
 
 export function AlertButton({ onSent }: { onSent?: () => void }) {
   const [open, setOpen] = useState(false);
@@ -16,7 +21,10 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
   const [sendError, setSendError] = useState<string>();
   const [clipUrl, setClipUrl] = useState<string>();
   const [waLink, setWaLink] = useState<string>();
+  const [autoReason, setAutoReason] = useState<string>();
+  const [autoSecondsLeft, setAutoSecondsLeft] = useState<number>();
   const confirmTimer = useRef<number>();
+  const autoInterval = useRef<number>();
   const { armed, error: recorderError, arm, captureClip } = useAlertRecorder();
 
   useEffect(() => {
@@ -25,6 +33,7 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
 
   useEffect(() => () => {
     if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
+    if (autoInterval.current) window.clearInterval(autoInterval.current);
   }, []);
 
   const startConfirm = useCallback(() => {
@@ -37,9 +46,12 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
     saveAlertContact(next);
   }, []);
 
-  const trigger = useCallback(async () => {
+  const trigger = useCallback(async (contactOverride?: AlertContact) => {
+    const activeContact = contactOverride ?? contact;
     if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
+    if (autoInterval.current) window.clearInterval(autoInterval.current);
     setConfirming(false);
+    setAutoSecondsLeft(undefined);
     setSendState('sending');
     setSendError(undefined);
     setClipUrl(undefined);
@@ -51,7 +63,7 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
 
       await createEvent({
         category: 'alerta',
-        title: contact.name ? `Alerta SOS de ${contact.name}` : 'Alerta SOS',
+        title: activeContact.name ? `Alerta SOS de ${activeContact.name}` : 'Alerta SOS',
         description: `Enviada desde el botón de pánico de WEROS.${position ? '' : ' Ubicación no disponible.'}`,
         lat: position?.lat ?? 0,
         lng: position?.lng ?? 0,
@@ -71,19 +83,56 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
         setClipUrl(URL.createObjectURL(clip));
       }
 
-      if (contact.phone) {
-        const link = `https://wa.me/${sanitizePhone(contact.phone).replace(/^\+/, '')}?text=${encodeURIComponent(message)}`;
+      if (activeContact.phone) {
+        const link = `https://wa.me/${sanitizePhone(activeContact.phone).replace(/^\+/, '')}?text=${encodeURIComponent(message)}`;
         setWaLink(link);
         window.open(link, '_blank', 'noopener,noreferrer');
       }
 
       setSendState('sent');
+      speak('Alerta enviada a tu contacto de emergencia');
       onSent?.();
     } catch (e) {
       setSendState('error');
       setSendError(e instanceof Error ? e.message : 'No se pudo enviar la alerta');
     }
   }, [contact, captureClip, onSent]);
+
+  const cancelAuto = useCallback(() => {
+    if (autoInterval.current) window.clearInterval(autoInterval.current);
+    setAutoReason(undefined);
+    setAutoSecondsLeft(undefined);
+    setOpen(false);
+  }, []);
+
+  // Automatic distress-sound trigger: SoundClassificationEngine (running in the "Vigilancia" tab
+  // with audio on) dispatches this whenever it hears a scream/gunshot/explosion. A cancellable
+  // countdown — not an instant silent send — so a loud movie or a dropped tray doesn't fire a real
+  // alert to someone's emergency contact unattended.
+  useEffect(() => {
+    const onDistress = (e: Event) => {
+      if (open) return; // an alert is already in flight/open — don't stack another
+      const detail = (e as CustomEvent<DistressSoundDetail>).detail;
+      setOpen(true);
+      setSendState('idle');
+      setAutoReason(detail?.label ?? 'sonido de socorro');
+      setAutoSecondsLeft(AUTO_COUNTDOWN_S);
+      speak(`Sonido de socorro detectado. Enviando alerta en ${AUTO_COUNTDOWN_S} segundos`);
+      autoInterval.current = window.setInterval(() => {
+        setAutoSecondsLeft((s) => {
+          if (s === undefined) return s;
+          if (s <= 1) {
+            window.clearInterval(autoInterval.current);
+            trigger(loadAlertContact() ?? { name: '', phone: '' });
+            return undefined;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    };
+    window.addEventListener(DISTRESS_SOUND_EVENT, onDistress);
+    return () => window.removeEventListener(DISTRESS_SOUND_EVENT, onDistress);
+  }, [open, trigger]);
 
   return (
     <>
@@ -97,12 +146,20 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
       </button>
 
       {open && (
-        <div className="sos-modal-backdrop" onClick={() => setOpen(false)}>
+        <div className="sos-modal-backdrop" onClick={() => (autoSecondsLeft !== undefined ? undefined : setOpen(false))}>
           <div className="sos-modal" onClick={(e) => e.stopPropagation()}>
             <div className="sos-modal-head">
               <h2><AlertTriangle size={18} /> Alerta de emergencia</h2>
-              <button className="icon-btn" onClick={() => setOpen(false)}><X size={18} /></button>
+              <button className="icon-btn" onClick={() => (autoSecondsLeft !== undefined ? cancelAuto() : setOpen(false))}><X size={18} /></button>
             </div>
+
+            {autoSecondsLeft !== undefined && (
+              <div className="sos-auto-banner">
+                <Ear size={16} />
+                <span>Sonido de socorro detectado ({autoReason}). Enviando alerta en <strong>{autoSecondsLeft}s</strong>…</span>
+                <button className="sos-cancel-auto" onClick={cancelAuto}>Cancelar</button>
+              </div>
+            )}
 
             {sendState === 'sent' ? (
               <div className="sos-result">
@@ -144,7 +201,7 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
                     <MessageCircleWarning size={18} /> Enviar alerta SOS
                   </button>
                 ) : (
-                  <button className="sos-trigger confirming" onClick={trigger} disabled={sendState === 'sending'}>
+                  <button className="sos-trigger confirming" onClick={() => trigger()} disabled={sendState === 'sending'}>
                     {sendState === 'sending' ? 'Enviando…' : '¿Confirmar? Toca de nuevo'}
                   </button>
                 )}
