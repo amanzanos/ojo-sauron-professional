@@ -5,8 +5,8 @@ import { categoryMeta } from '../types/citizen';
 import { loadAlertContact } from '../utils/alertContact';
 import { dispatchDistressSound } from '../utils/distressBus';
 import { distanceMeters, getCurrentPosition } from '../utils/geo';
-import { disableNotifications, enableNotifications, notificationsEnabled, notificationsSupported } from '../utils/notify';
-import { callLink, getBatteryLevel, vibrate } from '../utils/phone';
+import { disableNotifications, enableNotifications, notificationsEnabled, notificationsSupported, notify } from '../utils/notify';
+import { APP_LABELS, APP_LINKS, callLink, getBatteryLevel, googleSearchLink, vibrate } from '../utils/phone';
 import { pick, speak } from '../utils/tts';
 import { parseVoiceCommand, startsWithWakeWord, stripWakeWord } from '../utils/voiceCommands';
 import { fetchWeather } from '../utils/weather';
@@ -32,6 +32,12 @@ function saveHandsFreePref(value: boolean) {
   try { localStorage.setItem(HANDS_FREE_KEY, value ? '1' : '0'); } catch { /* ignore */ }
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds % 3600 === 0) { const h = seconds / 3600; return `${h} ${h === 1 ? 'hora' : 'horas'}`; }
+  if (seconds % 60 === 0) { const m = seconds / 60; return `${m} ${m === 1 ? 'minuto' : 'minutos'}`; }
+  return `${seconds} segundos`;
+}
+
 /**
  * Push-to-talk (tap the mic) or hands-free ("Oye WEROS, ...", always listening once enabled) voice
  * control — the Web Speech API on-device, no server, no API key. Not a conversational LLM: see the
@@ -48,8 +54,26 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
   const handsFreeRef = useRef(handsFree);
   const speakingRef = useRef(false);
   const shouldListenRef = useRef(false);
+  const remindersRef = useRef<Array<{ id: number; timeoutId: number }>>([]);
 
   useEffect(() => { handsFreeRef.current = handsFree; }, [handsFree]);
+
+  // Cleared on unmount for hygiene — in practice VoiceAssistant is mounted for the app's whole
+  // lifetime (rendered once at the App root), so pending reminders normally do fire.
+  useEffect(() => () => {
+    remindersRef.current.forEach((r) => window.clearTimeout(r.timeoutId));
+  }, []);
+
+  const scheduleReminder = useCallback((seconds: number, message: string) => {
+    const id = Date.now();
+    const timeoutId = window.setTimeout(() => {
+      remindersRef.current = remindersRef.current.filter((r) => r.id !== id);
+      vibrate([150, 80, 150]);
+      notify('WEROS', message);
+      speak(message);
+    }, seconds * 1000);
+    remindersRef.current.push({ id, timeoutId });
+  }, []);
 
   const respond = useCallback(async (transcript: string) => {
     const intent = parseVoiceCommand(transcript);
@@ -124,14 +148,42 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
         await say('Hecho.');
         break;
       }
+      case 'timer': {
+        scheduleReminder(intent.seconds, 'Temporizador terminado.');
+        await say(`Temporizador puesto a ${formatDuration(intent.seconds)}.`);
+        break;
+      }
+      case 'reminder': {
+        scheduleReminder(intent.seconds, `Recordatorio: ${intent.message}.`);
+        await say(`Vale, te aviso en ${formatDuration(intent.seconds)}.`);
+        break;
+      }
+      case 'cancelReminders': {
+        const count = remindersRef.current.length;
+        remindersRef.current.forEach((r) => window.clearTimeout(r.timeoutId));
+        remindersRef.current = [];
+        await say(count ? `Cancelados ${count} ${count === 1 ? 'aviso' : 'avisos'}.` : 'No tenías avisos programados.');
+        break;
+      }
+      case 'openApp': {
+        const url = APP_LINKS[intent.app];
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        await say(`Abriendo ${APP_LABELS[intent.app] ?? intent.app}.`);
+        break;
+      }
+      case 'googleSearch': {
+        window.open(googleSearchLink(intent.query), '_blank', 'noopener,noreferrer');
+        await say(`Buscando ${intent.query} en Google.`);
+        break;
+      }
       default: {
         await say(pick([
-          'No te he entendido. Puedes decir: activa el modo testigo, envía alerta, abre el mapa, o qué hay cerca de mí.',
-          'No he pillado eso. Prueba con "envía alerta" o "qué hay cerca de mí".'
+          'No te he entendido. Puedes decir: activa el modo testigo, envía alerta, pon un temporizador, o abre WhatsApp.',
+          'No he pillado eso. Prueba con "recuérdame algo en 10 minutos" o "busca en Google..."'
         ]));
       }
     }
-  }, [citizenEvents, currentTab, onNavigate, onWitnessCommand, witnessRecording]);
+  }, [citizenEvents, currentTab, onNavigate, onWitnessCommand, witnessRecording, scheduleReminder]);
 
   const startListening = useCallback((continuous: boolean) => {
     const recognition = recognitionRef.current;

@@ -10,6 +10,11 @@ export type VoiceIntent =
   | { type: 'weather' }
   | { type: 'call' }
   | { type: 'vibrate' }
+  | { type: 'timer'; seconds: number }
+  | { type: 'reminder'; message: string; seconds: number }
+  | { type: 'cancelReminders' }
+  | { type: 'openApp'; app: string }
+  | { type: 'googleSearch'; query: string }
   | { type: 'unknown' };
 
 const NAV_RULES: Array<{ words: string[]; tab: 'feed' | 'mapa' | 'testigo' | 'camara' }> = [
@@ -18,8 +23,29 @@ const NAV_RULES: Array<{ words: string[]; tab: 'feed' | 'mapa' | 'testigo' | 'ca
   { words: ['vigilancia', 'camara'], tab: 'camara' }
 ];
 
+// "abre el mapa" (no app name) keeps meaning "the WEROS map tab" — NAV_RULES already owns that
+// phrasing, so these external-app triggers use more specific phrasing ("google maps") to avoid
+// stealing it.
+const APP_TRIGGERS: Array<{ words: string[]; app: string }> = [
+  { words: ['whatsapp'], app: 'whatsapp' },
+  { words: ['spotify'], app: 'spotify' },
+  { words: ['youtube'], app: 'youtube' },
+  { words: ['google maps', 'mapas de google'], app: 'maps' },
+  { words: ['gmail', 'mi correo', 'el correo'], app: 'gmail' }
+];
+
+const DURATION_UNIT_SECONDS: Record<string, number> = {
+  segundo: 1, segundos: 1,
+  minuto: 60, minutos: 60,
+  hora: 3600, horas: 3600
+};
+
 function stripAccents(text: string): string {
   return text.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function parseDuration(amount: string, unit: string): number {
+  return Number(amount) * (DURATION_UNIT_SECONDS[unit] ?? 60);
 }
 
 /** Keyword-based intent matching — no language model, just enough to feel like giving Jarvis an order. */
@@ -54,6 +80,26 @@ export function parseVoiceCommand(raw: string): VoiceIntent {
   if (/que tiempo hace|va a llover|tiempo de hoy|previsión del tiempo|prevision del tiempo/.test(text)) return { type: 'weather' };
 
   if (/^vibra|haz vibrar|vibrar el (movil|telefono)/.test(text)) return { type: 'vibrate' };
+
+  const reminderMatch = text.match(/recuerdame\s+(.+?)\s+en\s+(\d+)\s*(segundos?|minutos?|horas?)/);
+  if (reminderMatch) return { type: 'reminder', message: reminderMatch[1].trim(), seconds: parseDuration(reminderMatch[2], reminderMatch[3]) };
+
+  const avisaMatch = text.match(/avisame en\s*(\d+)\s*(segundos?|minutos?|horas?)/);
+  if (avisaMatch) return { type: 'reminder', message: 'Es la hora', seconds: parseDuration(avisaMatch[1], avisaMatch[2]) };
+
+  const timerMatch = text.match(/(?:pon(?:me)? (?:un |una )?(?:temporizador|alarma|cronometro)|temporizador) de\s*(\d+)\s*(segundos?|minutos?|horas?)/);
+  if (timerMatch) return { type: 'timer', seconds: parseDuration(timerMatch[1], timerMatch[2]) };
+
+  if (/cancela (el |los |la |las )?(temporizador|temporizadores|recordatorio|recordatorios|alarma|alarmas|avisos)/.test(text)) {
+    return { type: 'cancelReminders' };
+  }
+
+  const searchMatch = text.match(/busca en google\s+(.+)/);
+  if (searchMatch) return { type: 'googleSearch', query: searchMatch[1].trim() };
+
+  for (const rule of APP_TRIGGERS) {
+    if (/^abre|^abrir/.test(text) && rule.words.some((w) => text.includes(w))) return { type: 'openApp', app: rule.app };
+  }
 
   for (const rule of NAV_RULES) {
     if (rule.words.some((w) => text.includes(w))) return { type: 'navigate', tab: rule.tab };
