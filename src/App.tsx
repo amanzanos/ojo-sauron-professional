@@ -21,10 +21,13 @@ import { VoiceIdentityEngine } from './engine/VoiceIdentityEngine';
 import { ZoneAnalyticsEngine } from './engine/ZoneAnalyticsEngine';
 import type { AnalysisEvent, AnalysisFrame, EmotionName, EnvironmentReport, FaceBox, ObjectInventoryEntry, PersonSummary, SessionReport, SocialFrame, SoundCategoryStat, SoundLogEntry, StoreZone, VoiceProfile, ZoneStats } from './types/analysis';
 import type { CitizenCategory, CitizenEvent } from './types/citizen';
+import { categoryMeta } from './types/citizen';
 import { getRearCameraStream } from './utils/camera';
 import { dispatchDistressSound } from './utils/distressBus';
 import { createEvent, fetchEvents } from './utils/eventStorage';
+import { distanceMeters, getCurrentPosition, type GeoPoint } from './utils/geo';
 import { clamp, nowId } from './utils/math';
+import { notify } from './utils/notify';
 import { fetchTodayStats, fetchZones, reportVisit, saveZones, type ZoneServerStats } from './utils/zoneStorage';
 import './styles/app.css';
 
@@ -119,6 +122,10 @@ export default function App() {
   const [citizenEvents, setCitizenEvents] = useState<CitizenEvent[]>([]);
   const [witnessCommand, setWitnessCommand] = useState<{ action: 'start' | 'stop'; id: number }>();
   const handleWitnessCommand = useCallback((action: 'start' | 'stop') => setWitnessCommand({ action, id: Date.now() }), []);
+  const [witnessRecording, setWitnessRecording] = useState(false);
+  const knownEventIds = useRef<Set<string>>(new Set());
+  const hasLoadedEventsOnce = useRef(false);
+  const cachedPosition = useRef<{ point: GeoPoint; at: number }>();
   const [zones, setZones] = useState<StoreZone[]>([]);
   const [editingZones, setEditingZones] = useState(false);
   const [zoneOccupancy, setZoneOccupancy] = useState<Record<string, number>>({});
@@ -592,10 +599,36 @@ export default function App() {
       .catch((err) => console.error('No se pudieron cargar las zonas', err));
   }, [zoneEngine]);
 
-  const refreshEvents = useCallback(() => {
-    fetchEvents()
-      .then(setCitizenEvents)
-      .catch((err) => console.error('No se pudieron cargar los eventos ciudadanos', err));
+  // Notification permission is opt-in (see VoiceAssistant's settings) — when it's off, notify()
+  // below is a harmless no-op, so this always runs the same way regardless.
+  const refreshEvents = useCallback(async () => {
+    let events: CitizenEvent[];
+    try {
+      events = await fetchEvents();
+    } catch (err) {
+      console.error('No se pudieron cargar los eventos ciudadanos', err);
+      return;
+    }
+    setCitizenEvents(events);
+
+    const isFirstLoad = !hasLoadedEventsOnce.current;
+    hasLoadedEventsOnce.current = true;
+    const newOnes = events.filter((ev) => !knownEventIds.current.has(ev.id) && ev.authorLabel !== 'Tú');
+    events.forEach((ev) => knownEventIds.current.add(ev.id));
+    if (isFirstLoad || !newOnes.length) return;
+
+    const now = Date.now();
+    if (!cachedPosition.current || now - cachedPosition.current.at > 5 * 60 * 1000) {
+      const point = await getCurrentPosition();
+      if (point) cachedPosition.current = { point, at: now };
+    }
+    const position = cachedPosition.current?.point;
+    if (!position) return;
+    newOnes.forEach((ev) => {
+      if (ev.lat && ev.lng && distanceMeters(position, ev) < 2000) {
+        notify('Reporte cerca de ti', `${categoryMeta(ev.category).label}: ${ev.title}`);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -656,7 +689,13 @@ export default function App() {
       <main className="weros-content">
         {tab === 'feed' && <Feed events={citizenEvents} onCreate={createCitizenEvent} />}
         {tab === 'mapa' && <CityMap events={citizenEvents} />}
-        {tab === 'testigo' && <WitnessMode command={witnessCommand} onCommandConsumed={() => setWitnessCommand(undefined)} />}
+        {tab === 'testigo' && (
+          <WitnessMode
+            command={witnessCommand}
+            onCommandConsumed={() => setWitnessCommand(undefined)}
+            onRecordingChange={setWitnessRecording}
+          />
+        )}
         {tab === 'camara' && (
           <div className="app-shell">
             <CameraStage
@@ -697,7 +736,13 @@ export default function App() {
         )}
       </main>
 
-      <VoiceAssistant citizenEvents={citizenEvents} onNavigate={setTab} onWitnessCommand={handleWitnessCommand} />
+      <VoiceAssistant
+        citizenEvents={citizenEvents}
+        onNavigate={setTab}
+        onWitnessCommand={handleWitnessCommand}
+        currentTab={tab}
+        witnessRecording={witnessRecording}
+      />
       <AlertButton onSent={refreshEvents} />
     </div>
   );

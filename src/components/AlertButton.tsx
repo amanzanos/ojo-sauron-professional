@@ -4,6 +4,7 @@ import { useAlertRecorder } from '../hooks/useAlertRecorder';
 import { loadAlertContact, saveAlertContact, sanitizePhone } from '../utils/alertContact';
 import { createEvent } from '../utils/eventStorage';
 import { getCurrentPosition, mapsLink } from '../utils/geo';
+import { notify } from '../utils/notify';
 import { speak } from '../utils/tts';
 import type { AlertContact } from '../types/citizen';
 import type { DistressSoundDetail } from '../utils/distressBus';
@@ -91,6 +92,7 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
 
       setSendState('sent');
       speak('Alerta enviada a tu contacto de emergencia');
+      notify('Alerta SOS enviada', 'Se compartió tu ubicación con tu contacto de emergencia y se guardó en el mapa.');
       onSent?.();
     } catch (e) {
       setSendState('error');
