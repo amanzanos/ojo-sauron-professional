@@ -22,6 +22,12 @@ export function useWitnessRecording() {
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
   const tickRef = useRef<number>();
+  const wakeLockRef = useRef<WakeLockSentinel>();
+
+  const releaseWakeLock = useCallback(() => {
+    wakeLockRef.current?.release().catch(() => undefined);
+    wakeLockRef.current = undefined;
+  }, []);
 
   const start = useCallback(async () => {
     setError(undefined);
@@ -42,6 +48,9 @@ export function useWitnessRecording() {
       setElapsedMs(0);
       tickRef.current = window.setInterval(() => setElapsedMs(performance.now() - startedAtRef.current), 500);
       setRecording(true);
+      // Keeps the screen from auto-locking mid-recording — a locked phone stops the camera stream
+      // on most mobile browsers, which would silently cut the recording short.
+      navigator.wakeLock?.request('screen').then((lock) => { wakeLockRef.current = lock; }).catch(() => undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo activar la cámara/micrófono');
       setRecording(false);
@@ -56,6 +65,7 @@ export function useWitnessRecording() {
       // already stopped
     }
     streamRef.current?.getTracks().forEach((t) => t.stop());
+    releaseWakeLock();
     const mimeType = chunksRef.current[0]?.type || 'video/webm';
     if (chunksRef.current.length) {
       const blob = new Blob(chunksRef.current, { type: mimeType });
@@ -65,7 +75,7 @@ export function useWitnessRecording() {
     streamRef.current = undefined;
     setStream(undefined);
     setRecording(false);
-  }, []);
+  }, [releaseWakeLock]);
 
   // Leaving the "Testigo" tab unmounts this without necessarily calling stop() first — without this,
   // the camera/mic would stay open (and silently keep recording into a clip nobody can reach) in
@@ -78,7 +88,8 @@ export function useWitnessRecording() {
       // already stopped
     }
     streamRef.current?.getTracks().forEach((t) => t.stop());
-  }, []);
+    releaseWakeLock();
+  }, [releaseWakeLock]);
 
   return { recording, elapsedMs, error, stream, clipUrl, start, stop };
 }

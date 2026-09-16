@@ -19,6 +19,12 @@ Red ciudadana para situaciones de calle: reporta y consulta incidentes cercanos 
   - Anuncia por voz (síntesis del navegador) "Alerta enviada a tu contacto de emergencia" — WEROS nunca dice que avisó a la policía, porque no tiene ninguna integración real con ningún cuerpo de seguridad.
 - **Detección automática de sonido de auxilio**: con la pestaña "Vigilancia" abierta y el audio activado, si el clasificador de sonido ambiente detecta un grito, un disparo o una explosión, se abre solo el flujo de alerta con una cuenta atrás cancelable de 8s (con aviso por voz) en vez de un botón que alguien tiene que pulsar a tiempo.
 
+### Enlace con el móvil
+- **Instalable como app (PWA)**: `manifest.json` + service worker mínimo — desde Chrome/Safari en el móvil puedes "Añadir a pantalla de inicio" y WEROS aparece con su propio icono, a pantalla completa, como una app nativa.
+- **Elegir contacto de emergencia desde la agenda del teléfono**: en el panel de alerta, el botón "Elegir de mis contactos" usa la Contacts Picker API para rellenar nombre y teléfono directamente desde tus contactos, sin escribirlos a mano. Solo aparece en Chrome/Android (única plataforma que soporta esta API); en el resto se rellenan a mano igual que antes.
+- **Pantalla siempre encendida durante el modo testigo**: mientras grabas, se pide un Wake Lock para que el teléfono no se bloquee solo y corte la grabación a media captura.
+- Ya existían (de antes): vibración, llamar al contacto por voz, consultar batería, compartir clips por `navigator.share`.
+
 ### Saludo diario
 - Al abrir la app por primera vez ese día aparece una franja "Buenos días/tardes/noches — toca para tu saludo". Los navegadores bloquean el audio automático sin gesto del usuario, así que no suena solo: hay que tocar "Empezar mi día".
 - Al tocarlo: WEROS te saluda por voz, consulta el tiempo de hoy (Open-Meteo, gratis, sin API key, usando tu ubicación) y te da un resumen rápido de cuántas incidencias se han reportado hoy en la comunidad.
@@ -31,6 +37,7 @@ Red ciudadana para situaciones de calle: reporta y consulta incidentes cercanos 
 - **Notificaciones del navegador**: chip para pedir permiso y activar avisos — cuando se envía una alerta SOS, cuando aparece un reporte ciudadano nuevo a menos de 2km de ti, y cada 5 minutos mientras el modo testigo sigue grabando. Solo funcionan mientras WEROS está abierto (aunque sea en segundo plano); si cierras el navegador del todo no llegan — eso requeriría push real con un backend dedicado.
 - Comandos reconocidos: **"abre el mapa / comunidad / vigilancia"**, **"activa el modo testigo"** / **"detener grabación"**, **"envía alerta"** / **"necesito ayuda"** (misma cuenta atrás cancelable que la detección automática de sonido), **"llama a mi contacto"**, **"qué hay cerca de mí"**, **"lee los últimos reportes"**, **"cómo estoy"** (resumen de pestaña/estado de grabación), **"qué hora es"**, **"cuánta batería tengo"** y **"vibra"**.
 - Respuestas con variación (no siempre la misma frase) para sonar menos a script y más a asistente — pero sigue siendo reconocimiento de comandos por palabras clave, no una IA conversacional libre. Para eso haría falta una API de lenguaje con coste y un backend que la proteja (fase 2 posible, no implementada).
+- **Voz masculina, tono grave** (estilo Jarvis): `speak()` intenta elegir automáticamente una voz española masculina (por nombre — Jorge, Diego, Pablo, Raúl...) con el tono ligeramente bajado, en vez de la voz por defecto del navegador. Es una heurística por nombre, no un dato de género real de la API — en Android, donde las voces suelen tener nombres en clave sin pistas, puede que no siempre acierte.
 
 ### Modo testigo
 - Graba con la cámara trasera y el micrófono de forma continua (no solo 20s) mientras caminas por una zona que te preocupa, con vista previa en vivo y contador de tiempo.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Download, Ear, MessageCircleWarning, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Contact, Download, Ear, MessageCircleWarning, ShieldCheck, X } from 'lucide-react';
 import { useAlertRecorder } from '../hooks/useAlertRecorder';
 import { loadAlertContact, saveAlertContact, sanitizePhone } from '../utils/alertContact';
 import { createEvent } from '../utils/eventStorage';
@@ -46,6 +46,17 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
     setContact(next);
     saveAlertContact(next);
   }, []);
+
+  const pickFromContacts = useCallback(async () => {
+    if (!navigator.contacts?.select) return;
+    try {
+      const [picked] = await navigator.contacts.select(['name', 'tel'], { multiple: false });
+      if (!picked) return;
+      saveContact({ name: picked.name?.[0] ?? contact.name, phone: picked.tel?.[0] ?? contact.phone });
+    } catch {
+      // user cancelled the native contacts picker
+    }
+  }, [contact, saveContact]);
 
   const trigger = useCallback(async (contactOverride?: AlertContact) => {
     const activeContact = contactOverride ?? contact;
@@ -182,6 +193,11 @@ export function AlertButton({ onSent }: { onSent?: () => void }) {
                   de cámara y micrófono grabados.
                 </p>
 
+                {navigator.contacts?.select && (
+                  <button className="sos-pick-contact" onClick={pickFromContacts}>
+                    <Contact size={14} /> Elegir de mis contactos
+                  </button>
+                )}
                 <div className="sos-field">
                   <label>Nombre del contacto</label>
                   <input value={contact.name} onChange={(e) => saveContact({ ...contact, name: e.target.value })} placeholder="Ej. Mamá" />
