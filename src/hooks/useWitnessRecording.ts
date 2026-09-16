@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRearCameraStream } from '../utils/camera';
 
 function pickMimeType(): string | undefined {
@@ -50,7 +50,11 @@ export function useWitnessRecording() {
 
   const stop = useCallback(() => {
     if (tickRef.current) window.clearInterval(tickRef.current);
-    recorderRef.current?.stop();
+    try {
+      recorderRef.current?.stop();
+    } catch {
+      // already stopped
+    }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     const mimeType = chunksRef.current[0]?.type || 'video/webm';
     if (chunksRef.current.length) {
@@ -61,6 +65,19 @@ export function useWitnessRecording() {
     streamRef.current = undefined;
     setStream(undefined);
     setRecording(false);
+  }, []);
+
+  // Leaving the "Testigo" tab unmounts this without necessarily calling stop() first — without this,
+  // the camera/mic would stay open (and silently keep recording into a clip nobody can reach) in
+  // the background after navigating away.
+  useEffect(() => () => {
+    if (tickRef.current) window.clearInterval(tickRef.current);
+    try {
+      recorderRef.current?.stop();
+    } catch {
+      // already stopped
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
   }, []);
 
   return { recording, elapsedMs, error, stream, clipUrl, start, stop };

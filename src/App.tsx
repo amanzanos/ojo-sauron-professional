@@ -5,6 +5,7 @@ import { CameraStage } from './components/CameraStage';
 import { CityMap } from './components/CityMap';
 import { Feed } from './components/Feed';
 import { SidePanel } from './components/SidePanel';
+import { VoiceAssistant } from './components/VoiceAssistant';
 import { WitnessMode } from './components/WitnessMode';
 import { AmbientVisionEngine } from './engine/AmbientVisionEngine';
 import { EMOTION_LABELS, FaceAnalysisEngine } from './engine/FaceAnalysisEngine';
@@ -116,6 +117,8 @@ export default function App() {
   const zoneEngine = useMemo(() => new ZoneAnalyticsEngine(), []);
   const [tab, setTab] = useState<WerosTab>('feed');
   const [citizenEvents, setCitizenEvents] = useState<CitizenEvent[]>([]);
+  const [witnessCommand, setWitnessCommand] = useState<{ action: 'start' | 'stop'; id: number }>();
+  const handleWitnessCommand = useCallback((action: 'start' | 'stop') => setWitnessCommand({ action, id: Date.now() }), []);
   const [zones, setZones] = useState<StoreZone[]>([]);
   const [editingZones, setEditingZones] = useState(false);
   const [zoneOccupancy, setZoneOccupancy] = useState<Record<string, number>>({});
@@ -653,7 +656,7 @@ export default function App() {
       <main className="weros-content">
         {tab === 'feed' && <Feed events={citizenEvents} onCreate={createCitizenEvent} />}
         {tab === 'mapa' && <CityMap events={citizenEvents} />}
-        {tab === 'testigo' && <WitnessMode />}
+        {tab === 'testigo' && <WitnessMode command={witnessCommand} onCommandConsumed={() => setWitnessCommand(undefined)} />}
         {tab === 'camara' && (
           <div className="app-shell">
             <CameraStage
@@ -694,6 +697,7 @@ export default function App() {
         )}
       </main>
 
+      <VoiceAssistant citizenEvents={citizenEvents} onNavigate={setTab} onWitnessCommand={handleWitnessCommand} />
       <AlertButton onSent={refreshEvents} />
     </div>
   );

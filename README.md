@@ -19,6 +19,11 @@ Red ciudadana para situaciones de calle: reporta y consulta incidentes cercanos 
   - Anuncia por voz (síntesis del navegador) "Alerta enviada a tu contacto de emergencia" — WEROS nunca dice que avisó a la policía, porque no tiene ninguna integración real con ningún cuerpo de seguridad.
 - **Detección automática de sonido de auxilio**: con la pestaña "Vigilancia" abierta y el audio activado, si el clasificador de sonido ambiente detecta un grito, un disparo o una explosión, se abre solo el flujo de alerta con una cuenta atrás cancelable de 8s (con aviso por voz) en vez de un botón que alguien tiene que pulsar a tiempo.
 
+### Asistente de voz
+- Botón flotante (esquina inferior izquierda) con reconocimiento de voz del navegador (Web Speech API) — sin servidor propio ni clave de API. Funciona en navegadores basados en Chromium (Chrome, Edge, Android); Firefox y Safari de escritorio no lo soportan, así que el botón simplemente no aparece ahí.
+- Comandos reconocidos: **"abre el mapa / comunidad / vigilancia"**, **"activa el modo testigo"** / **"detener grabación"**, **"envía alerta"** / **"necesito ayuda"** (pasa por la misma cuenta atrás cancelable que la detección automática de sonido), y **"qué hay cerca de mí"** (resume los reportes del feed a menos de 2km).
+- Es reconocimiento de comandos por palabras clave, no una IA conversacional libre — para eso haría falta una API de lenguaje con coste (ver nota abajo).
+
 ### Modo testigo
 - Graba con la cámara trasera y el micrófono de forma continua (no solo 20s) mientras caminas por una zona que te preocupa, con vista previa en vivo y contador de tiempo.
 - Al detener, la grabación queda para descargar o compartir — se guarda solo en tu dispositivo, WEROS no la sube a ningún sitio.

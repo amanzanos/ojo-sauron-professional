@@ -10,13 +10,28 @@ function formatElapsed(ms: number) {
   return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
 }
 
-export function WitnessMode() {
+interface WitnessModeProps {
+  command?: { action: 'start' | 'stop'; id: number };
+  onCommandConsumed?: () => void;
+}
+
+export function WitnessMode({ command, onCommandConsumed }: WitnessModeProps) {
   const { recording, elapsedMs, error, stream, clipUrl, start, stop } = useWitnessRecording();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = stream ?? null;
   }, [stream]);
+
+  // Voice-assistant-driven start/stop (see VoiceAssistant) — "id" makes the same action twice in a
+  // row (e.g. saying "activa modo testigo" again) still register as a fresh command.
+  useEffect(() => {
+    if (!command) return;
+    if (command.action === 'start') start();
+    else stop();
+    onCommandConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [command]);
 
   const shareClip = async () => {
     if (!clipUrl) return;
