@@ -19,6 +19,7 @@ import { VoiceIdentityEngine } from './engine/VoiceIdentityEngine';
 import { ZoneAnalyticsEngine } from './engine/ZoneAnalyticsEngine';
 import type { AnalysisEvent, AnalysisFrame, EmotionName, EnvironmentReport, FaceBox, ObjectInventoryEntry, PersonSummary, SessionReport, SocialFrame, SoundCategoryStat, SoundLogEntry, StoreZone, VoiceProfile, ZoneStats } from './types/analysis';
 import type { CitizenCategory, CitizenEvent } from './types/citizen';
+import { getRearCameraStream } from './utils/camera';
 import { createEvent, fetchEvents } from './utils/eventStorage';
 import { clamp, nowId } from './utils/math';
 import { fetchTodayStats, fetchZones, reportVisit, saveZones, type ZoneServerStats } from './utils/zoneStorage';
@@ -533,7 +534,7 @@ export default function App() {
     setError(undefined);
     try {
       await Promise.all([faceEngine.init(), handEngine.init(), objectEngine.init(), identityEngine.init(), soundEngine.init()]);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      const stream = await getRearCameraStream({ width: { ideal: 1280 }, height: { ideal: 720 } });
       const video = videoRef.current;
       if (!video) return;
       video.srcObject = stream;

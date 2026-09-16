@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getRearCameraStream } from '../utils/camera';
 
 const BUFFER_MS = 20000;
 const CHUNK_MS = 1000;
@@ -37,10 +38,7 @@ export function useAlertRecorder() {
     if (streamRef.current) return;
     setError(undefined);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 960 }, height: { ideal: 540 } },
-        audio: true
-      });
+      const stream = await getRearCameraStream({ width: { ideal: 960 }, height: { ideal: 540 } }, true);
       streamRef.current = stream;
       const mimeType = pickMimeType();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
