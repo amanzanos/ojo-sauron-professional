@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Sun, X } from 'lucide-react';
 import type { CitizenEvent } from '../types/citizen';
 import { markGreetedToday, shouldGreetToday } from '../utils/dailyGreeting';
+import { hasOwnerDescriptor, matchesOwner } from '../utils/faceIdentity';
 import { getCurrentPosition } from '../utils/geo';
+import { isToolEnabled } from '../utils/toolPrefs';
 import { speak } from '../utils/tts';
 import { fetchWeather } from '../utils/weather';
 
@@ -39,6 +41,18 @@ export function DailyGreeting({ citizenEvents }: DailyGreetingProps) {
   const start = async () => {
     setPlaying(true);
     markGreetedToday();
+
+    // Saludo con reconocimiento facial (Herramientas → "Saludo con cara"): si está configurado,
+    // abre la cámara delantera un instante y solo continúa si reconoce tu cara — o si no ve
+    // ninguna (falla abierto, no bloquea el saludo por un fallo de cámara).
+    if (isToolEnabled('faceGreeting') && hasOwnerDescriptor()) {
+      const recognized = await matchesOwner().catch(() => true);
+      if (!recognized) {
+        setPlaying(false);
+        setVisible(false);
+        return;
+      }
+    }
 
     // Best-effort local jingle — a 404 in production (where the gitignored file doesn't exist)
     // is expected, not an error.

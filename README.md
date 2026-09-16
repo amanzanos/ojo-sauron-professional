@@ -45,6 +45,21 @@ Red ciudadana para situaciones de calle: reporta y consulta incidentes cercanos 
 - Graba con la cámara trasera y el micrófono de forma continua (no solo 20s) mientras caminas por una zona que te preocupa, con vista previa en vivo y contador de tiempo.
 - Al detener, la grabación queda para descargar o compartir — se guarda solo en tu dispositivo, WEROS no la sube a ningún sitio.
 
+### Herramientas
+Pestaña nueva con una cuadrícula de iconos — cada uno abre un panel pequeño y autocontenido, todos con el mismo patrón simple (una explicación de una línea + un botón grande). Todo funciona con APIs estándar del navegador, sin backend ni claves:
+
+- **Brújula**: orientación en vivo (`DeviceOrientationEvent`); en iPhone pide permiso explícito la primera vez.
+- **Pasos**: contador de pasos del día por detección de picos en el acelerómetro (`DeviceMotionEvent`) — una estimación, no un podómetro clínico. Se reinicia cada día.
+- **Conducción**: detecta velocidad sostenida por GPS (~29 km/h) y activa el manos libres del asistente de voz automáticamente.
+- **Recordatorios** (por lugar): guarda un aviso ligado a un sitio — se dispara al acercarte, no a una hora fija. Se desactiva solo tras dispararse una vez (reactívalo desde la lista para reusarlo).
+- **Patrulla**: programa franjas horarias/días en las que el modo testigo se activa solo, mientras WEROS esté abierto — nunca interrumpe una grabación manual en marcha.
+- **QR ubicación**: código QR con tu ubicación en vivo para que alguien lo escanee en persona — nada viaja por red.
+- **Grabar pantalla**: evidencia de lo que pasa *en la pantalla* del móvil (`getDisplayMedia`), no de la cámara — útil para una estafa telefónica, una web sospechosa o una app rara.
+- **Batería**: avisa por voz + notificación + vibración una vez por ciclo de descarga al cruzar el umbral que marques.
+- **Luz ambiente**: ajusta ligeramente el brillo de la vista de cámara según la luz real (lux calculado por `AmbientVisionEngine`) — solo mientras tienes la pestaña Vigilancia abierta, no es un tema claro/oscuro de toda la app.
+- **Espejo de ánimo**: con una sola persona en cámara y una emoción dominante marcada (contento/triste/tenso), comenta en voz alta de vez en cuando y ofrece abrir una búsqueda de Spotify acorde — máximo una vez cada 3 minutos.
+- **Saludo con cara**: el saludo diario solo habla si reconoce tu cara (mismo motor de identidad facial que perfila personas en Vigilancia) — la comparación es 100% local, nunca sale del dispositivo. Si ve a otra persona, se calla; si no ve ninguna cara, falla abierto y saluda igual.
+
 ### Vigilancia (cámara)
 - Interfaz HUD táctica a pantalla completa con panel lateral por pestañas (Resumen / Métricas / Emociones / Gestos / Eventos).
 - Detección facial con MediaPipe Face Landmarker, pose de cabeza calculada a partir de la matriz de transformación 3D real del modelo.

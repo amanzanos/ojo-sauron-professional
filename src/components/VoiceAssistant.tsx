@@ -5,13 +5,14 @@ import { categoryMeta } from '../types/citizen';
 import { loadAlertContact } from '../utils/alertContact';
 import { dispatchDistressSound } from '../utils/distressBus';
 import { distanceMeters, getCurrentPosition } from '../utils/geo';
+import { FORCE_HANDS_FREE_EVENT } from '../utils/handsFreeBus';
 import { disableNotifications, enableNotifications, notificationsEnabled, notificationsSupported, notify } from '../utils/notify';
 import { APP_LABELS, APP_LINKS, callLink, getBatteryLevel, googleSearchLink, vibrate } from '../utils/phone';
 import { pick, speak } from '../utils/tts';
 import { parseVoiceCommand, startsWithWakeWord, stripWakeWord } from '../utils/voiceCommands';
 import { fetchWeather } from '../utils/weather';
 
-type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara';
+type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools';
 
 interface VoiceAssistantProps {
   citizenEvents: CitizenEvent[];
@@ -22,7 +23,7 @@ interface VoiceAssistantProps {
 }
 
 const NEARBY_RADIUS_M = 2000;
-const TAB_LABELS: Record<WerosTab, string> = { feed: 'Comunidad', mapa: 'Mapa', testigo: 'Testigo', camara: 'Vigilancia' };
+const TAB_LABELS: Record<WerosTab, string> = { feed: 'Comunidad', mapa: 'Mapa', testigo: 'Testigo', camara: 'Vigilancia', tools: 'Herramientas' };
 const HANDS_FREE_KEY = 'weros.assistant.handsFree.v1';
 
 function loadHandsFreePref(): boolean {
@@ -260,22 +261,34 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
     startListening(false);
   }, [listening, handsFree, startListening]);
 
-  const toggleHandsFree = useCallback(() => {
-    setHandsFree((prev) => {
-      const next = !prev;
-      handsFreeRef.current = next;
-      saveHandsFreePref(next);
-      if (next) {
-        shouldListenRef.current = true;
-        setReply('Modo manos libres activado. Di "Oye WEROS" seguido de lo que necesites.');
-        startListening(true);
-      } else {
-        shouldListenRef.current = false;
-        recognitionRef.current?.stop();
-      }
-      return next;
-    });
+  const applyHandsFree = useCallback((next: boolean) => {
+    setHandsFree(next);
+    handsFreeRef.current = next;
+    saveHandsFreePref(next);
+    if (next) {
+      shouldListenRef.current = true;
+      setReply('Modo manos libres activado. Di "Oye WEROS" seguido de lo que necesites.');
+      startListening(true);
+    } else {
+      shouldListenRef.current = false;
+      recognitionRef.current?.stop();
+    }
   }, [startListening]);
+
+  const toggleHandsFree = useCallback(() => applyHandsFree(!handsFreeRef.current), [applyHandsFree]);
+
+  // Driving mode (Herramientas) requests hands-free automatically once it detects sustained
+  // driving speed — it can't call toggleHandsFree directly since it lives in a different
+  // component with no shared prop path, so it goes through this same plain-event bridge as the
+  // distress-sound auto-alert.
+  useEffect(() => {
+    const onForce = (e: Event) => {
+      const detail = (e as CustomEvent<{ on: boolean }>).detail;
+      if (detail && detail.on !== handsFreeRef.current) applyHandsFree(detail.on);
+    };
+    window.addEventListener(FORCE_HANDS_FREE_EVENT, onForce);
+    return () => window.removeEventListener(FORCE_HANDS_FREE_EVENT, onForce);
+  }, [applyHandsFree]);
 
   const toggleNotifications = useCallback(async () => {
     if (notifOn) { disableNotifications(); setNotifOn(false); return; }

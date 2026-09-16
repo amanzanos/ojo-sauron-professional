@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Map as MapIcon, Radar, Rss } from 'lucide-react';
+import { Eye, Map as MapIcon, Radar, Rss, Wrench } from 'lucide-react';
 import { AlertButton } from './components/AlertButton';
 import { CameraStage } from './components/CameraStage';
 import { CityMap } from './components/CityMap';
 import { DailyGreeting } from './components/DailyGreeting';
 import { Feed } from './components/Feed';
 import { SidePanel } from './components/SidePanel';
+import { ToolsHub } from './components/ToolsHub';
 import { VoiceAssistant } from './components/VoiceAssistant';
 import { WitnessMode } from './components/WitnessMode';
 import { AmbientVisionEngine } from './engine/AmbientVisionEngine';
@@ -23,16 +24,23 @@ import { ZoneAnalyticsEngine } from './engine/ZoneAnalyticsEngine';
 import type { AnalysisEvent, AnalysisFrame, EmotionName, EnvironmentReport, FaceBox, ObjectInventoryEntry, PersonSummary, SessionReport, SocialFrame, SoundCategoryStat, SoundLogEntry, StoreZone, VoiceProfile, ZoneStats } from './types/analysis';
 import type { CitizenCategory, CitizenEvent } from './types/citizen';
 import { categoryMeta } from './types/citizen';
+import { useBatteryAlert } from './hooks/useBatteryAlert';
+import { useDrivingMode } from './hooks/useDrivingMode';
+import { useGeofenceWatcher } from './hooks/useGeofenceWatcher';
+import { usePatrolScheduler } from './hooks/usePatrolScheduler';
 import { getRearCameraStream } from './utils/camera';
 import { dispatchDistressSound } from './utils/distressBus';
 import { createEvent, fetchEvents } from './utils/eventStorage';
 import { distanceMeters, getCurrentPosition, type GeoPoint } from './utils/geo';
 import { clamp, nowId } from './utils/math';
 import { notify } from './utils/notify';
+import { speak } from './utils/tts';
+import { isToolEnabled } from './utils/toolPrefs';
+import { loadGeofences } from './utils/geofenceStorage';
 import { fetchTodayStats, fetchZones, reportVisit, saveZones, type ZoneServerStats } from './utils/zoneStorage';
 import './styles/app.css';
 
-type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara';
+type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools';
 
 function mergeEvents(a: AnalysisEvent[], b: AnalysisEvent[]) {
   const map = new Map<string, AnalysisEvent>();
@@ -67,6 +75,12 @@ function emptyEnvironmentReport(): EnvironmentReport {
     roomType: 'sin_datos', clutterScore: 0
   };
 }
+
+const MOOD_MIRROR_PHRASES: Partial<Record<EmotionName, { text: string; query: string }>> = {
+  happy: { text: 'Te veo animado. Te dejo un poco de música alegre.', query: 'pop feliz' },
+  sad: { text: 'Pareces un poco decaído. Te pongo algo relajante.', query: 'musica relajante' },
+  angry: { text: 'Te noto tenso. Aquí tienes algo para bajar el ritmo.', query: 'musica calmada' }
+};
 
 const SOCIAL_LABELS: Record<SocialFrame['mode'], string> = {
   conversacion: 'Conversación activa',
@@ -124,6 +138,20 @@ export default function App() {
   const [witnessCommand, setWitnessCommand] = useState<{ action: 'start' | 'stop'; id: number }>();
   const handleWitnessCommand = useCallback((action: 'start' | 'stop') => setWitnessCommand({ action, id: Date.now() }), []);
   const [witnessRecording, setWitnessRecording] = useState(false);
+  const driving = useDrivingMode();
+  const geofenceWatcher = useGeofenceWatcher();
+  const batteryAlert = useBatteryAlert();
+  const lastMoodSpeakAt = useRef(0);
+
+  useEffect(() => {
+    if (isToolEnabled('drivingMode')) driving.start();
+    if (isToolEnabled('geofences') && loadGeofences().some((g) => g.active)) geofenceWatcher.start();
+    if (isToolEnabled('batteryAlert')) batteryAlert.start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  usePatrolScheduler(witnessRecording, () => { setTab('testigo'); handleWitnessCommand('start'); }, () => handleWitnessCommand('stop'));
+
   const knownEventIds = useRef<Set<string>>(new Set());
   const hasLoadedEventsOnce = useRef(false);
   const cachedPosition = useRef<{ point: GeoPoint; at: number }>();
@@ -452,6 +480,25 @@ export default function App() {
           .reduce((acc, evs) => mergeEvents(acc, evs), [] as AnalysisEvent[]);
         const merged: AnalysisFrame = { ...data, objects, voice, sound, heartRate, sceneMotion, ambient, social, events: combinedEvents };
         setFrame(merged);
+
+        // Espejo de ánimo: an occasional, opt-in spoken observation + a mood-matched Spotify
+        // search — only for moods worth commenting on, throttled hard so it reads as a check-in,
+        // not a running commentary track.
+        if (isToolEnabled('moodMirror') && data.peopleDetected === 1) {
+          const mood = MOOD_MIRROR_PHRASES[merged.dominantEmotion.name];
+          if (mood && merged.dominantEmotion.score > 55 && ts - lastMoodSpeakAt.current > 180000) {
+            lastMoodSpeakAt.current = ts;
+            speak(mood.text);
+            window.open(`https://open.spotify.com/search/${encodeURIComponent(mood.query)}`, '_blank', 'noopener,noreferrer');
+          }
+        }
+
+        // Luz ambiente -> brillo automático: nudges the camera preview's brightness with the
+        // room's actual light level (from AmbientVisionEngine's luma reading), instead of a fixed
+        // filter value — subtle, and only while this tab/tool is actually on.
+        if (isToolEnabled('autoBrightness')) {
+          document.documentElement.style.setProperty('--auto-brightness', (0.85 + (merged.ambient.lux / 100) * 0.3).toFixed(2));
+        }
         setElapsed((ts - sessionStart.current) / 1000);
         setGestureCounts({ ...handEngine.getCounts() });
         const inventory = objectEngine.getInventory();
@@ -684,6 +731,7 @@ export default function App() {
           <button className={tab === 'mapa' ? 'active' : ''} onClick={() => setTab('mapa')}><MapIcon size={15} /> Mapa</button>
           <button className={tab === 'testigo' ? 'active' : ''} onClick={() => setTab('testigo')}><Eye size={15} /> Testigo</button>
           <button className={tab === 'camara' ? 'active' : ''} onClick={() => setTab('camara')}><Radar size={15} /> Vigilancia</button>
+          <button className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')}><Wrench size={15} /> Herramientas</button>
         </nav>
       </header>
 
@@ -692,6 +740,13 @@ export default function App() {
       <main className="weros-content">
         {tab === 'feed' && <Feed events={citizenEvents} onCreate={createCitizenEvent} />}
         {tab === 'mapa' && <CityMap events={citizenEvents} />}
+        {tab === 'tools' && (
+          <ToolsHub
+            driving={{ enabled: driving.enabled, driving: driving.driving, speedKmh: driving.speedKmh, start: driving.start, stop: driving.stop }}
+            geofenceWatcher={{ enabled: geofenceWatcher.enabled, start: geofenceWatcher.start, stop: geofenceWatcher.stop }}
+            battery={{ supported: batteryAlert.supported, enabled: batteryAlert.enabled, level: batteryAlert.level, start: batteryAlert.start, stop: batteryAlert.stop }}
+          />
+        )}
         {tab === 'testigo' && (
           <WitnessMode
             command={witnessCommand}
