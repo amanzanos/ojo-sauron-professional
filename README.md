@@ -2,6 +2,10 @@
 
 Red ciudadana para situaciones de calle: reporta y consulta incidentes cercanos en un mapa en vivo, envía una alerta SOS con tu ubicación y los últimos 20 segundos grabados a un contacto de confianza, y activa un modo de vigilancia con cámara con análisis conductual en tiempo real.
 
+## Interfaz
+
+Barra de pestañas fija abajo (pensada para el pulgar, no arriba donde hay que estirar la mano): **Comunidad, Mapa, Cámara, Gym, Más**. "Cámara" agrupa Vigilancia y Testigo en un mismo sitio con un interruptor arriba, en vez de ser dos pestañas sueltas — ambas usan la cámara trasera y rara vez se necesitan a la vez. "Más" abre Herramientas (brújula, pasos, recordatorios de lugar, etc. — ver más abajo). El botón SOS y el micrófono del asistente flotan siempre por encima de la barra, nunca la tapan.
+
 ## Funciones
 
 ### Comunidad (feed ciudadano)

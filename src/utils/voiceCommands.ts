@@ -1,5 +1,5 @@
 export type VoiceIntent =
-  | { type: 'navigate'; tab: 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym' }
+  | { type: 'navigate'; tab: 'feed' | 'mapa' | 'camara' | 'tools' | 'gym' }
   | { type: 'witness'; action: 'start' | 'stop' }
   | { type: 'alert' }
   | { type: 'nearby' }
@@ -17,7 +17,7 @@ export type VoiceIntent =
   | { type: 'googleSearch'; query: string }
   | { type: 'unknown' };
 
-const NAV_RULES: Array<{ words: string[]; tab: 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym' }> = [
+const NAV_RULES: Array<{ words: string[]; tab: 'feed' | 'mapa' | 'camara' | 'tools' | 'gym' }> = [
   { words: ['comunidad', 'feed', 'noticias'], tab: 'feed' },
   { words: ['mapa'], tab: 'mapa' },
   { words: ['vigilancia', 'camara'], tab: 'camara' },

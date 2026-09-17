@@ -13,7 +13,7 @@ import { pick, speak } from '../utils/tts';
 import { parseVoiceCommand, startsWithWakeWord, stripWakeWord } from '../utils/voiceCommands';
 import { fetchWeather } from '../utils/weather';
 
-type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym';
+type WerosTab = 'feed' | 'mapa' | 'camara' | 'tools' | 'gym';
 
 interface VoiceAssistantProps {
   citizenEvents: CitizenEvent[];
@@ -24,7 +24,7 @@ interface VoiceAssistantProps {
 }
 
 const NEARBY_RADIUS_M = 2000;
-const TAB_LABELS: Record<WerosTab, string> = { feed: 'Comunidad', mapa: 'Mapa', testigo: 'Testigo', camara: 'Vigilancia', tools: 'Herramientas', gym: 'Gym' };
+const TAB_LABELS: Record<WerosTab, string> = { feed: 'Comunidad', mapa: 'Mapa', camara: 'Cámara', tools: 'Herramientas', gym: 'Gym' };
 const HANDS_FREE_KEY = 'weros.assistant.handsFree.v1';
 
 function loadHandsFreePref(): boolean {
@@ -89,7 +89,8 @@ export function VoiceAssistant({ citizenEvents, onNavigate, onWitnessCommand, cu
         break;
       }
       case 'witness': {
-        if (intent.action === 'start') onNavigate('testigo');
+        // onWitnessCommand itself switches to the Cámara tab in Testigo mode — "Testigo" isn't
+        // its own top-level destination anymore, so there's nothing for onNavigate to do here.
         onWitnessCommand(intent.action);
         await say(intent.action === 'start'
           ? pick(['Modo testigo activado. Te avisaré cada cinco minutos.', 'Grabando. Aquí estoy contigo.'])

@@ -41,7 +41,8 @@ import { loadGeofences } from './utils/geofenceStorage';
 import { fetchTodayStats, fetchZones, reportVisit, saveZones, type ZoneServerStats } from './utils/zoneStorage';
 import './styles/app.css';
 
-type WerosTab = 'feed' | 'mapa' | 'testigo' | 'camara' | 'tools' | 'gym';
+type WerosTab = 'feed' | 'mapa' | 'camara' | 'tools' | 'gym';
+type CameraMode = 'vigilancia' | 'testigo';
 
 function mergeEvents(a: AnalysisEvent[], b: AnalysisEvent[]) {
   const map = new Map<string, AnalysisEvent>();
@@ -135,9 +136,16 @@ export default function App() {
   const ambientEngine = useMemo(() => new AmbientVisionEngine(), []);
   const zoneEngine = useMemo(() => new ZoneAnalyticsEngine(), []);
   const [tab, setTab] = useState<WerosTab>('feed');
+  const [cameraMode, setCameraMode] = useState<CameraMode>('vigilancia');
   const [citizenEvents, setCitizenEvents] = useState<CitizenEvent[]>([]);
   const [witnessCommand, setWitnessCommand] = useState<{ action: 'start' | 'stop'; id: number }>();
-  const handleWitnessCommand = useCallback((action: 'start' | 'stop') => setWitnessCommand({ action, id: Date.now() }), []);
+  // Starting the witness recording (from voice or the patrol scheduler) also has to land on the
+  // right tab/mode — "Testigo" now lives inside the unified Cámara tab, not as its own top-level
+  // destination, so switching there is this handler's job, not the caller's.
+  const handleWitnessCommand = useCallback((action: 'start' | 'stop') => {
+    if (action === 'start') { setTab('camara'); setCameraMode('testigo'); }
+    setWitnessCommand({ action, id: Date.now() });
+  }, []);
   const [witnessRecording, setWitnessRecording] = useState(false);
   const driving = useDrivingMode();
   const geofenceWatcher = useGeofenceWatcher();
@@ -151,7 +159,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  usePatrolScheduler(witnessRecording, () => { setTab('testigo'); handleWitnessCommand('start'); }, () => handleWitnessCommand('stop'));
+  usePatrolScheduler(witnessRecording, () => handleWitnessCommand('start'), () => handleWitnessCommand('stop'));
 
   const knownEventIds = useRef<Set<string>>(new Set());
   const hasLoadedEventsOnce = useRef(false);
@@ -727,14 +735,6 @@ export default function App() {
     <div className="weros-shell">
       <header className="weros-topnav">
         <span className="weros-logo">WEROS</span>
-        <nav className="weros-tabs">
-          <button className={tab === 'feed' ? 'active' : ''} onClick={() => setTab('feed')}><Rss size={15} /> Comunidad</button>
-          <button className={tab === 'mapa' ? 'active' : ''} onClick={() => setTab('mapa')}><MapIcon size={15} /> Mapa</button>
-          <button className={tab === 'testigo' ? 'active' : ''} onClick={() => setTab('testigo')}><Eye size={15} /> Testigo</button>
-          <button className={tab === 'camara' ? 'active' : ''} onClick={() => setTab('camara')}><Radar size={15} /> Vigilancia</button>
-          <button className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')}><Wrench size={15} /> Herramientas</button>
-          <button className={tab === 'gym' ? 'active' : ''} onClick={() => setTab('gym')}><Dumbbell size={15} /> Gym</button>
-        </nav>
       </header>
 
       <DailyGreeting citizenEvents={citizenEvents} />
@@ -750,52 +750,72 @@ export default function App() {
           />
         )}
         {tab === 'gym' && <GymTracker />}
-        {tab === 'testigo' && (
-          <WitnessMode
-            command={witnessCommand}
-            onCommandConsumed={() => setWitnessCommand(undefined)}
-            onRecordingChange={setWitnessRecording}
-          />
-        )}
         {tab === 'camara' && (
-          <div className="app-shell">
-            <CameraStage
-              videoRef={videoRef}
-              canvasRef={canvasRef}
-              frame={frame}
-              ready={ready}
-              error={error}
-              onStart={start}
-              elapsedLabel={formatElapsed(elapsed)}
-              voiceActive={voiceActive}
-              voiceError={voiceError}
-              onToggleVoice={toggleVoice}
-              zones={zones}
-              zoneOccupancy={zoneOccupancy}
-              editingZones={editingZones}
-              onToggleEditZones={toggleEditZones}
-              onAddZone={addZone}
-              onDeleteZone={deleteZone}
-            />
-            <SidePanel
-              frame={frame}
-              history={history}
-              gestureCounts={gestureCounts}
-              persons={persons}
-              voiceActive={voiceActive}
-              voiceError={voiceError}
-              onToggleVoice={toggleVoice}
-              objectInventory={objectInventory}
-              soundLog={soundLog}
-              soundStats={soundStats}
-              sessionReport={sessionReport}
-              environmentReport={environmentReport}
-              voiceProfiles={voiceProfiles}
-              zoneStats={zoneStats}
-            />
+          <div className="camera-tab">
+            <div className="camera-mode-switch">
+              <button className={cameraMode === 'vigilancia' ? 'active' : ''} onClick={() => setCameraMode('vigilancia')}>
+                <Radar size={14} /> Vigilancia
+              </button>
+              <button className={cameraMode === 'testigo' ? 'active' : ''} onClick={() => setCameraMode('testigo')}>
+                <Eye size={14} /> Testigo
+              </button>
+            </div>
+            {cameraMode === 'testigo' && (
+              <WitnessMode
+                command={witnessCommand}
+                onCommandConsumed={() => setWitnessCommand(undefined)}
+                onRecordingChange={setWitnessRecording}
+              />
+            )}
+            {cameraMode === 'vigilancia' && (
+              <div className="app-shell">
+                <CameraStage
+                  videoRef={videoRef}
+                  canvasRef={canvasRef}
+                  frame={frame}
+                  ready={ready}
+                  error={error}
+                  onStart={start}
+                  elapsedLabel={formatElapsed(elapsed)}
+                  voiceActive={voiceActive}
+                  voiceError={voiceError}
+                  onToggleVoice={toggleVoice}
+                  zones={zones}
+                  zoneOccupancy={zoneOccupancy}
+                  editingZones={editingZones}
+                  onToggleEditZones={toggleEditZones}
+                  onAddZone={addZone}
+                  onDeleteZone={deleteZone}
+                />
+                <SidePanel
+                  frame={frame}
+                  history={history}
+                  gestureCounts={gestureCounts}
+                  persons={persons}
+                  voiceActive={voiceActive}
+                  voiceError={voiceError}
+                  onToggleVoice={toggleVoice}
+                  objectInventory={objectInventory}
+                  soundLog={soundLog}
+                  soundStats={soundStats}
+                  sessionReport={sessionReport}
+                  environmentReport={environmentReport}
+                  voiceProfiles={voiceProfiles}
+                  zoneStats={zoneStats}
+                />
+              </div>
+            )}
           </div>
         )}
       </main>
+
+      <nav className="weros-tabbar">
+        <button className={tab === 'feed' ? 'active' : ''} onClick={() => setTab('feed')}><Rss size={20} /> Comunidad</button>
+        <button className={tab === 'mapa' ? 'active' : ''} onClick={() => setTab('mapa')}><MapIcon size={20} /> Mapa</button>
+        <button className={tab === 'camara' ? 'active' : ''} onClick={() => setTab('camara')}><Radar size={20} /> Cámara</button>
+        <button className={tab === 'gym' ? 'active' : ''} onClick={() => setTab('gym')}><Dumbbell size={20} /> Gym</button>
+        <button className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')}><Wrench size={20} /> Más</button>
+      </nav>
 
       <VoiceAssistant
         citizenEvents={citizenEvents}
