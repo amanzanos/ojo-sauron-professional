@@ -288,7 +288,7 @@ export function SidePanel({ frame, history, gestureCounts, persons, voiceActive,
                     <div className="person-row"><span>Sexo</span><b>{p.sex} ({p.sexConfidence}%)</b></div>
                     <div className="person-row"><span>Edad est.</span><b>~{p.age} años</b></div>
                     <div className="person-row"><span>Ánimo</span><b>{p.mood} ({p.moodScore}%)</b></div>
-                    <div className="person-seen">{timeAgo(p.firstSeenAt)}</div>
+                    <div className="person-seen">visto {timeAgo(p.firstSeenAt)} · ficha act. {timeAgo(p.updatedAt)}</div>
                   </div>
                 </div>
               ))}

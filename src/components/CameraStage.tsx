@@ -1,7 +1,9 @@
 import { type MouseEventHandler, type RefObject, useState } from 'react';
 import { AlertTriangle, Heart, MapPin, Mic, MicOff, Radio, ShieldAlert, Sun, Timer, Trash2, Users } from 'lucide-react';
-import type { AnalysisFrame, StoreZone } from '../types/analysis';
+import type { AnalysisFrame, PersonSummary, StoreZone } from '../types/analysis';
 import { GESTURE_ICON } from '../engine/HandGestureEngine';
+import { EMOTION_LABELS } from '../engine/FaceAnalysisEngine';
+import type { TrackedPerson } from '../engine/PersonTracker';
 import { nowId } from '../utils/math';
 
 interface Props {
@@ -21,11 +23,21 @@ interface Props {
   onToggleEditZones: () => void;
   onAddZone: (zone: StoreZone) => void;
   onDeleteZone: (id: string) => void;
+  trackedPersons: TrackedPerson[];
+  persons: PersonSummary[];
+}
+
+const SEX_ABBR: Record<PersonSummary['sex'], string> = { masculino: 'H', femenino: 'M' };
+
+function timeAgoShort(ts: number) {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m`;
 }
 
 const MIN_ZONE_SIZE = 0.03; // fraction of the video's shorter dimension — filters out accidental clicks
 
-export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart, elapsedLabel, voiceActive, voiceError, onToggleVoice, zones, zoneOccupancy, editingZones, onToggleEditZones, onAddZone, onDeleteZone }: Props) {
+export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart, elapsedLabel, voiceActive, voiceError, onToggleVoice, zones, zoneOccupancy, editingZones, onToggleEditZones, onAddZone, onDeleteZone, trackedPersons, persons }: Props) {
   const vw = videoRef.current?.videoWidth || 1;
   const vh = videoRef.current?.videoHeight || 1;
   const gestures = (frame?.hands.gestures ?? []).filter((g) => g.name !== 'hand_near_face');
@@ -192,6 +204,26 @@ export function CameraStage({ videoRef, canvasRef, frame, ready, error, onStart,
       )}
 
       <div className="gesture-layer">
+        {trackedPersons.map((tp) => {
+          const cx = tp.box.x + tp.box.width / 2;
+          const leftPct = 100 - (cx / vw) * 100;
+          const topPct = (tp.box.y / vh) * 100;
+          const summary = persons.find((p) => p.id === tp.id);
+          const liveMood = tp.emotionSamples[tp.emotionSamples.length - 1];
+          return (
+            <div key={tp.id} className="person-live-badge" style={{ left: `${leftPct}%`, top: `${topPct}%` }}>
+              {summary ? (
+                <>
+                  <span>{SEX_ABBR[summary.sex]} · ~{summary.age}a</span>
+                  <span>{liveMood ? EMOTION_LABELS[liveMood] : summary.mood}</span>
+                  <span className="person-live-refresh">act. hace {timeAgoShort(summary.updatedAt)}</span>
+                </>
+              ) : (
+                <span>Analizando…</span>
+              )}
+            </div>
+          );
+        })}
         {gestures.map((g) => {
           const leftPct = 100 - (g.x / vw) * 100;
           const topPct = (g.y / vh) * 100;

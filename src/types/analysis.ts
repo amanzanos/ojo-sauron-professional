@@ -125,6 +125,7 @@ export interface PersonSummary {
   mood: string;
   moodScore: number;
   firstSeenAt: number;
+  updatedAt: number;
 }
 
 export interface ObjectDetection {

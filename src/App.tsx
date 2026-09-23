@@ -180,6 +180,7 @@ export default function App() {
   const [elapsed, setElapsed] = useState(0);
   const [gestureCounts, setGestureCounts] = useState<Record<string, number>>({});
   const [persons, setPersons] = useState<PersonSummary[]>([]);
+  const [trackedPersons, setTrackedPersons] = useState<TrackedPerson[]>([]);
   const [objectInventory, setObjectInventory] = useState<ObjectInventoryEntry[]>([]);
   const [soundLog, setSoundLog] = useState<SoundLogEntry[]>([]);
   const [soundStats, setSoundStats] = useState<SoundCategoryStat[]>([]);
@@ -341,7 +342,8 @@ export default function App() {
           age: ageGender?.age ?? existing?.age ?? 0,
           mood,
           moodScore,
-          firstSeenAt: existing?.firstSeenAt ?? Date.now() - seenAgoMs
+          firstSeenAt: existing?.firstSeenAt ?? Date.now() - seenAgoMs,
+          updatedAt: Date.now()
         };
         if (existing) return prev.map((p) => (p.id === personId ? summary : p));
         return [summary, ...prev].slice(0, 24);
@@ -517,6 +519,7 @@ export default function App() {
           setSoundStats(soundEngine.getStats());
         }
         drawOverlay(merged, allPersons);
+        setTrackedPersons(allPersons);
         const value = (key: string) => merged.metrics.find((m) => m.key === key)?.value ?? 0;
         setHistory((h) => [...h.slice(-90), {
           t: new Date().toLocaleTimeString(),
@@ -786,6 +789,8 @@ export default function App() {
                   onToggleEditZones={toggleEditZones}
                   onAddZone={addZone}
                   onDeleteZone={deleteZone}
+                  trackedPersons={trackedPersons}
+                  persons={persons}
                 />
                 <SidePanel
                   frame={frame}
